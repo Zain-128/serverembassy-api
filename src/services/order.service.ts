@@ -11,6 +11,7 @@ import {
   type TaxExemptStatus,
 } from "../models/index.js";
 import { AppError, mapDoc } from "../lib/errors.js";
+import { paginate, totalPagesOf, type PaginationQuery } from "../lib/paginate.js";
 import * as couponService from "./coupon.service.js";
 
 const ORDER_NUMBER_BASE = 1000;
@@ -217,6 +218,21 @@ export async function listQuotes() {
   return docs.map((d) => mapDoc(d));
 }
 
+export async function listQuotesPaginated(query: PaginationQuery) {
+  const { page, limit, skip } = paginate(query);
+  const [docs, total] = await Promise.all([
+    Quote.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Quote.countDocuments(),
+  ]);
+  return {
+    items: docs.map((d) => mapDoc(d)),
+    total,
+    page,
+    limit,
+    totalPages: totalPagesOf(total, limit),
+  };
+}
+
 export async function createQuote(data: Record<string, unknown>) {
   const doc = await Quote.create(data);
   return mapDoc(doc);
@@ -238,6 +254,27 @@ export async function listCustomers() {
     }),
   );
   return withCounts;
+}
+
+export async function listCustomersPaginated(query: PaginationQuery) {
+  const { page, limit, skip } = paginate(query);
+  const [docs, total] = await Promise.all([
+    Customer.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Customer.countDocuments(),
+  ]);
+  const withCounts = await Promise.all(
+    docs.map(async (c) => {
+      const orders = await Order.countDocuments({ customerId: c._id });
+      return { ...mapDoc(c), orderCount: orders };
+    }),
+  );
+  return {
+    items: withCounts,
+    total,
+    page,
+    limit,
+    totalPages: totalPagesOf(total, limit),
+  };
 }
 
 export async function updateCustomerTaxExempt(id: string, taxExempt: TaxExemptStatus) {

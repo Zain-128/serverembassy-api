@@ -1,9 +1,25 @@
 import { Coupon } from "../models/index.js";
 import { AppError, mapDoc } from "../lib/errors.js";
+import { paginate, totalPagesOf, type PaginationQuery } from "../lib/paginate.js";
 
 export async function listCoupons() {
   const docs = await Coupon.find().sort({ createdAt: -1 });
   return docs.map(mapDoc);
+}
+
+export async function listCouponsPaginated(query: PaginationQuery) {
+  const { page, limit, skip } = paginate(query);
+  const [docs, total] = await Promise.all([
+    Coupon.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Coupon.countDocuments(),
+  ]);
+  return {
+    items: docs.map(mapDoc),
+    total,
+    page,
+    limit,
+    totalPages: totalPagesOf(total, limit),
+  };
 }
 
 export async function createCoupon(data: Record<string, unknown>) {

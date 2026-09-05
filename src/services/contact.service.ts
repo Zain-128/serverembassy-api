@@ -1,5 +1,6 @@
 import { ContactMessage } from "../models/index.js";
 import { AppError, mapDoc } from "../lib/errors.js";
+import { paginate, totalPagesOf, type PaginationQuery } from "../lib/paginate.js";
 
 export type ContactMessageInput = {
   name: string;
@@ -16,6 +17,21 @@ export async function createContactMessage(input: ContactMessageInput) {
 export async function listContactMessages() {
   const docs = await ContactMessage.find().sort({ createdAt: -1 }).limit(200);
   return docs.map(mapDoc);
+}
+
+export async function listContactMessagesPaginated(query: PaginationQuery) {
+  const { page, limit, skip } = paginate(query);
+  const [docs, total] = await Promise.all([
+    ContactMessage.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+    ContactMessage.countDocuments(),
+  ]);
+  return {
+    items: docs.map(mapDoc),
+    total,
+    page,
+    limit,
+    totalPages: totalPagesOf(total, limit),
+  };
 }
 
 export async function markContactMessageRead(id: string, read: boolean) {

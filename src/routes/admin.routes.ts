@@ -239,13 +239,18 @@ router.post(
   },
 );
 
-router.get("/categories", async (_req, res, next) => {
-  try {
-    res.json(await catalogService.listCategories());
-  } catch (e) {
-    next(e);
-  }
-});
+router.get(
+  "/categories",
+  validateQuery(adminListQuery),
+  async (req, res, next) => {
+    try {
+      const q = req.query as z.infer<typeof adminListQuery>;
+      res.json(await catalogService.listCategoriesPaginated({ page: q.page, limit: q.limit }));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.post(
   "/categories",
@@ -286,13 +291,18 @@ router.delete(
   },
 );
 
-router.get("/brands", async (_req, res, next) => {
-  try {
-    res.json(await catalogService.listBrands());
-  } catch (e) {
-    next(e);
-  }
-});
+router.get(
+  "/brands",
+  validateQuery(adminListQuery),
+  async (req, res, next) => {
+    try {
+      const q = req.query as z.infer<typeof adminListQuery>;
+      res.json(await catalogService.listBrandsPaginated({ page: q.page, limit: q.limit }));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.post(
   "/brands",
@@ -368,13 +378,18 @@ router.post(
   },
 );
 
-router.get("/quotes", async (_req, res, next) => {
-  try {
-    res.json(await orderService.listQuotes());
-  } catch (e) {
-    next(e);
-  }
-});
+router.get(
+  "/quotes",
+  validateQuery(adminListQuery),
+  async (req, res, next) => {
+    try {
+      const q = req.query as z.infer<typeof adminListQuery>;
+      res.json(await orderService.listQuotesPaginated({ page: q.page, limit: q.limit }));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.patch(
   "/quotes/:id/status",
@@ -389,13 +404,18 @@ router.patch(
   },
 );
 
-router.get("/customers", async (_req, res, next) => {
-  try {
-    res.json(await orderService.listCustomers());
-  } catch (e) {
-    next(e);
-  }
-});
+router.get(
+  "/customers",
+  validateQuery(adminListQuery),
+  async (req, res, next) => {
+    try {
+      const q = req.query as z.infer<typeof adminListQuery>;
+      res.json(await orderService.listCustomersPaginated({ page: q.page, limit: q.limit }));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.patch(
   "/customers/:id/tax-exempt",
@@ -431,13 +451,18 @@ router.patch(
   },
 );
 
-router.get("/banners", async (_req, res, next) => {
-  try {
-    res.json(await catalogService.listBanners());
-  } catch (e) {
-    next(e);
-  }
-});
+router.get(
+  "/banners",
+  validateQuery(adminListQuery),
+  async (req, res, next) => {
+    try {
+      const q = req.query as z.infer<typeof adminListQuery>;
+      res.json(await catalogService.listBannersPaginated({ page: q.page, limit: q.limit }));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.post(
   "/banners",
@@ -489,13 +514,18 @@ router.delete(
   },
 );
 
-router.get("/pages", async (_req, res, next) => {
-  try {
-    res.json(await catalogService.listCmsPages());
-  } catch (e) {
-    next(e);
-  }
-});
+router.get(
+  "/pages",
+  validateQuery(adminListQuery),
+  async (req, res, next) => {
+    try {
+      const q = req.query as z.infer<typeof adminListQuery>;
+      res.json(await catalogService.listCmsPagesPaginated({ page: q.page, limit: q.limit }));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.patch(
   "/pages/:slug",
@@ -582,13 +612,18 @@ router.delete(
   },
 );
 
-router.get("/coupons", async (_req, res, next) => {
-  try {
-    res.json(await couponService.listCoupons());
-  } catch (e) {
-    next(e);
-  }
-});
+router.get(
+  "/coupons",
+  validateQuery(adminListQuery),
+  async (req, res, next) => {
+    try {
+      const q = req.query as z.infer<typeof adminListQuery>;
+      res.json(await couponService.listCouponsPaginated({ page: q.page, limit: q.limit }));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.post(
   "/coupons",
@@ -651,13 +686,18 @@ router.delete(
   },
 );
 
-router.get("/messages", async (_req, res, next) => {
-  try {
-    res.json(await contactService.listContactMessages());
-  } catch (e) {
-    next(e);
-  }
-});
+router.get(
+  "/messages",
+  validateQuery(adminListQuery),
+  async (req, res, next) => {
+    try {
+      const q = req.query as z.infer<typeof adminListQuery>;
+      res.json(await contactService.listContactMessagesPaginated({ page: q.page, limit: q.limit }));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.patch(
   "/messages/:id",

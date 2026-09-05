@@ -7,11 +7,34 @@ import {
   StoreSettings,
 } from "../models/index.js";
 import { AppError, mapDoc } from "../lib/errors.js";
+import {
+  paginate,
+  totalPagesOf,
+  type PaginationQuery,
+} from "../lib/paginate.js";
 
 export async function listCategories(publicOnly = false) {
   const filter = publicOnly ? { showOnHomepage: true } : {};
   const docs = await Category.find(filter).sort({ sortOrder: 1, name: 1 });
   return docs.map((d) => mapDoc(d));
+}
+
+export async function listCategoriesPaginated(query: PaginationQuery) {
+  const { page, limit, skip } = paginate(query);
+  const [docs, total] = await Promise.all([
+    Category.find()
+      .sort({ sortOrder: 1, name: 1 })
+      .skip(skip)
+      .limit(limit),
+    Category.countDocuments(),
+  ]);
+  return {
+    items: docs.map((d) => mapDoc(d)),
+    total,
+    page,
+    limit,
+    totalPages: totalPagesOf(total, limit),
+  };
 }
 
 export async function getCategoryTree() {
@@ -68,6 +91,24 @@ export async function listBrands(featuredOnly = false) {
   return docs.map((d) => mapDoc(d));
 }
 
+export async function listBrandsPaginated(query: PaginationQuery) {
+  const { page, limit, skip } = paginate(query);
+  const [docs, total] = await Promise.all([
+    Brand.find()
+      .sort({ sortOrder: 1, name: 1 })
+      .skip(skip)
+      .limit(limit),
+    Brand.countDocuments(),
+  ]);
+  return {
+    items: docs.map((d) => mapDoc(d)),
+    total,
+    page,
+    limit,
+    totalPages: totalPagesOf(total, limit),
+  };
+}
+
 export async function createBrand(data: Record<string, unknown>) {
   const doc = await Brand.create(data);
   return mapDoc(doc);
@@ -112,6 +153,21 @@ export async function listBanners(activeOnly = false) {
   return docs.map((d) => mapDoc(d));
 }
 
+export async function listBannersPaginated(query: PaginationQuery) {
+  const { page, limit, skip } = paginate(query);
+  const [docs, total] = await Promise.all([
+    Banner.find().sort({ sortOrder: 1 }).skip(skip).limit(limit),
+    Banner.countDocuments(),
+  ]);
+  return {
+    items: docs.map((d) => mapDoc(d)),
+    total,
+    page,
+    limit,
+    totalPages: totalPagesOf(total, limit),
+  };
+}
+
 export async function createBanner(data: Record<string, unknown>) {
   const doc = await Banner.create(data);
   return mapDoc(doc);
@@ -134,6 +190,21 @@ export async function listCmsPages(publicOnly = false) {
   const filter = publicOnly ? { published: true } : {};
   const docs = await CmsPage.find(filter).sort({ slug: 1 });
   return docs.map((d) => mapDoc(d));
+}
+
+export async function listCmsPagesPaginated(query: PaginationQuery) {
+  const { page, limit, skip } = paginate(query);
+  const [docs, total] = await Promise.all([
+    CmsPage.find().sort({ slug: 1 }).skip(skip).limit(limit),
+    CmsPage.countDocuments(),
+  ]);
+  return {
+    items: docs.map((d) => mapDoc(d)),
+    total,
+    page,
+    limit,
+    totalPages: totalPagesOf(total, limit),
+  };
 }
 
 export async function getCmsPageBySlug(slug: string) {
