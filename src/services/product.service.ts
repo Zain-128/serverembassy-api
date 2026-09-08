@@ -210,6 +210,8 @@ function toNumber(value: string | number | undefined): number | undefined {
 const FEED_CONDITION_MAP: Record<string, string> = {
   new: "new",
   refurbished: "certified_refurbished",
+  "certified refurbished": "certified_refurbished",
+  certified_refurbished: "certified_refurbished",
   used: "used",
 };
 
@@ -256,11 +258,25 @@ async function ensureCategoryByPath(
       parentId = cache.get(walk)!;
       continue;
     }
+
+    const escapedName = segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    const existing = (await Category.findOne({
+      name: { $regex: new RegExp(`^${escapedName}$`, "i") },
+      parentId: parentId ?? null,
+    }).exec()) as { _id: Types.ObjectId } | null;
+    if (existing) {
+      cache.set(walk, existing._id);
+      parentId = existing._id;
+      continue;
+    }
+
     const slug = await uniqueSlug(slugify(segment), Category);
     const category: { _id: Types.ObjectId } = await Category.create({
       name: segment,
       slug,
       parentId,
+      showOnHomepage: !parentId,
+      bannerTitle: segment,
     });
     cache.set(walk, category._id);
     parentId = category._id;
@@ -268,14 +284,17 @@ async function ensureCategoryByPath(
   return parentId;
 }
 
+const IMPORT_ROW_LIMIT = 100;
+
 export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
   let created = 0;
   let updated = 0;
   const brandCache = new Map<string, Types.ObjectId>();
   const categoryCache = new Map<string, Types.ObjectId>();
   const errors: Array<{ sku: string; error: string }> = [];
+  const limited = rows.slice(0, IMPORT_ROW_LIMIT);
 
-  for (const row of rows) {
+  for (const row of limited) {
     try {
       const sku = (row.id || "").trim();
       if (!sku || !(row.title || "").trim()) {
@@ -301,18 +320,23 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
         continue;
       }
       const onSale = salePrice != null && salePrice >= 0 && salePrice < price;
-      const sellingPrice = onSale ? salePrice : price;
-      const compareAtPrice = onSale ? price : undefined;
+      const sellingPrice = onSale ? salePrice! : price;
+      const compareAtPrice = onSale ? price : null;
 
-      const condition = FEED_CONDITION_MAP[(row.condition || "").toLowerCase().trim()] ?? "new";
+      const conditionKey = (row.condition || "").toLowerCase().trim();
+      const condition = FEED_CONDITION_MAP[conditionKey] ?? "new";
       const imageLink = (row.imageLink || "").trim();
       const images = imageLink
-        ? imageLink.split("|").map((url, i) => ({
-            url: url.trim(),
-            altText: (row.title || "").trim(),
-            sortOrder: i,
-            isPrimary: i === 0,
-          }))
+        ? imageLink
+            .split("|")
+            .map((url) => url.trim())
+            .filter(Boolean)
+            .map((url, i) => ({
+              url,
+              altText: (row.title || "").trim(),
+              sortOrder: i,
+              isPrimary: i === 0,
+            }))
         : [];
 
       const payload = {
@@ -323,7 +347,7 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
         description: (row.description || "").trim(),
         link: (row.link || "").trim(),
         gtin: (row.gtin || "").trim(),
-        mpn: (row.mpn || "").trim(),
+        mpn: (row.mpn || "").trim() || sku,
         googleProductCategory: (row.googleProductCategory || "").trim(),
         customLabel0: (row.customLabel0 || "").trim(),
         shipping: (row.shipping || "").trim(),
@@ -334,21 +358,36 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
         stock: Math.max(0, Math.round(stock)),
         weightLbs: toNumber(row.shippingWeight) ?? 1,
         images,
-        status: availability === "out of stock" ? "draft" : "published",
+        status: availability === "out of stock" ? ("draft" as const) : ("published" as const),
         isDeal: onSale,
+        featured: false,
       };
 
       const existing = await Product.findOne({ sku });
       if (existing) {
-        const { ...set } = payload;
-        await Product.updateOne({ sku }, { $set: set });
+        const { compareAtPrice: cmp, ...rest } = payload;
+        if (cmp == null) {
+          await Product.updateOne({ sku }, { $set: rest, $unset: { compareAtPrice: 1 } });
+        } else {
+          await Product.updateOne({ sku }, { $set: payload });
+        }
         updated++;
       } else {
-        await Product.create({ slug: (row.title ? slugify(row.title) : "") || sku.toLowerCase().replace(/[^a-z0-9]+/g, "-"), ...payload });
+        const baseSlug = slugify(sku) || slugify(row.title || "") || `sku-${Date.now()}`;
+        let slug = baseSlug;
+        let n = 2;
+        while (await Product.exists({ slug })) {
+          slug = `${baseSlug}-${n}`;
+          n += 1;
+        }
+        await Product.create({ slug, ...payload });
         created++;
       }
     } catch (e) {
-      errors.push({ sku: (row.id || "").trim() || "(unknown)", error: e instanceof Error ? e.message : "Unknown error" });
+      errors.push({
+        sku: (row.id || "").trim() || "(unknown)",
+        error: e instanceof Error ? e.message : "Unknown error",
+      });
     }
   }
 
