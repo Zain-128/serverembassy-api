@@ -7,7 +7,7 @@ const app = createApp();
 async function start() {
   await connectDb();
   app.listen(env.PORT, () => {
-    console.log(`Server Embassy API listening on http://localhost:${env.PORT}`);
+    console.log(`Power Line Devices API listening on http://localhost:${env.PORT}`);
   });
 }
 

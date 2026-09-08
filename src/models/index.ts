@@ -49,7 +49,7 @@ const staffUserSchema = new Schema(
 const storeSettingsSchema = new Schema(
   {
     key: { type: String, default: "default", unique: true },
-    storeName: { type: String, default: "Server Embassy" },
+    storeName: { type: String, default: "Power Line Devices" },
     tagline: String,
     phone: String,
     supportEmail: String,
