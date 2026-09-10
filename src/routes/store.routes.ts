@@ -4,6 +4,7 @@ import * as productService from "../services/product.service.js";
 import * as catalogService from "../services/catalog.service.js";
 import * as orderService from "../services/order.service.js";
 import * as couponService from "../services/coupon.service.js";
+import * as authService from "../services/auth.service.js";
 import { validateQuery, validateBody } from "../middleware/validate.js";
 import { requireAuth, requireCustomer } from "../middleware/auth.js";
 import { AppError } from "../lib/errors.js";
@@ -181,5 +182,13 @@ router.get(
     }
   },
 );
+
+router.get("/invite-leaderboard", async (_req, res, next) => {
+  try {
+    res.json(await authService.getInviteLeaderboard());
+  } catch (e) {
+    next(e);
+  }
+});
 
 export default router;

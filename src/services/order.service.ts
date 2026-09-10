@@ -2,6 +2,7 @@ import { Types } from "mongoose";
 import {
   Counter,
   Customer,
+  Invite,
   Order,
   Product,
   Quote,
@@ -249,8 +250,11 @@ export async function listCustomers() {
   const docs = await Customer.find().sort({ createdAt: -1 });
   const withCounts = await Promise.all(
     docs.map(async (c) => {
-      const orders = await Order.countDocuments({ customerId: c._id });
-      return { ...mapDoc(c), orderCount: orders };
+      const [orders, invites] = await Promise.all([
+        Order.countDocuments({ customerId: c._id }),
+        Invite.countDocuments({ inviterId: c._id }),
+      ]);
+      return { ...mapDoc(c), orderCount: orders, inviteCount: invites };
     }),
   );
   return withCounts;
@@ -264,8 +268,11 @@ export async function listCustomersPaginated(query: PaginationQuery) {
   ]);
   const withCounts = await Promise.all(
     docs.map(async (c) => {
-      const orders = await Order.countDocuments({ customerId: c._id });
-      return { ...mapDoc(c), orderCount: orders };
+      const [orders, invites] = await Promise.all([
+        Order.countDocuments({ customerId: c._id }),
+        Invite.countDocuments({ inviterId: c._id }),
+      ]);
+      return { ...mapDoc(c), orderCount: orders, inviteCount: invites };
     }),
   );
   return {

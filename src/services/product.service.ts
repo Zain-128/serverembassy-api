@@ -284,7 +284,7 @@ async function ensureCategoryByPath(
   return parentId;
 }
 
-const IMPORT_ROW_LIMIT = 100;
+const IMPORT_BATCH_LIMIT = 500;
 
 export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
   let created = 0;
@@ -292,7 +292,7 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
   const brandCache = new Map<string, Types.ObjectId>();
   const categoryCache = new Map<string, Types.ObjectId>();
   const errors: Array<{ sku: string; error: string }> = [];
-  const limited = rows.slice(0, IMPORT_ROW_LIMIT);
+  const limited = rows.slice(0, IMPORT_BATCH_LIMIT);
 
   for (const row of limited) {
     try {

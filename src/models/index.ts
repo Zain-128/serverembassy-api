@@ -282,6 +282,15 @@ const couponSchema = new Schema(
   { timestamps: true },
 );
 
+const inviteSchema = new Schema(
+  {
+    inviterId: { type: Schema.Types.ObjectId, ref: "Customer", required: true, index: true },
+    email: { type: String, required: true, lowercase: true },
+    status: { type: String, enum: ["pending", "accepted", "expired"], default: "pending", index: true },
+  },
+  { timestamps: true },
+);
+
 const counterSchema = new Schema({
   _id: { type: String, required: true },
   seq: { type: Number, default: 0 },
@@ -303,4 +312,5 @@ export const Quote = model("Quote", quoteSchema);
 export const NewsletterSubscriber = model("NewsletterSubscriber", newsletterSchema);
 export const ContactMessage = model("ContactMessage", contactMessageSchema);
 export const Coupon = model("Coupon", couponSchema);
+export const Invite = model("Invite", inviteSchema);
 export const Counter = model("Counter", counterSchema);

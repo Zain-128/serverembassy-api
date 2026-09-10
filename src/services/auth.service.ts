@@ -1,5 +1,5 @@
 import bcrypt from "bcryptjs";
-import { Customer, StaffUser } from "../models/index.js";
+import { Customer, StaffUser, Invite, Order } from "../models/index.js";
 import { AppError } from "../lib/errors.js";
 import { signToken } from "../lib/jwt.js";
 
@@ -114,4 +114,98 @@ function mapCustomerProfile(customer: {
     taxExempt: customer.taxExempt,
     netTermsEnabled: customer.netTermsEnabled,
   };
+}
+
+export async function deleteCustomer(id: string, password: string) {
+  const customer = await Customer.findById(id);
+  if (!customer) throw new AppError(404, "Account not found");
+
+  if (!customer.passwordHash) throw new AppError(400, "Account has no password set");
+
+  const valid = await bcrypt.compare(password, customer.passwordHash);
+  if (!valid) throw new AppError(401, "Incorrect password");
+
+  const deletedEmail = `deleted_${String(customer._id)}@deleted.com`;
+
+  await Order.updateMany(
+    { customerId: customer._id },
+    {
+      $set: {
+        customerId: null,
+        email: deletedEmail,
+        billingAddress: {},
+        shippingAddress: {},
+        notes: "Customer account deleted",
+      },
+    },
+  );
+
+  await Invite.deleteMany({ inviterId: customer._id });
+  await Customer.findByIdAndDelete(id);
+
+  return { message: "Account deleted successfully" };
+}
+
+export async function sendInvite(inviterId: string, email: string) {
+  const inviter = await Customer.findById(inviterId);
+  if (!inviter) throw new AppError(404, "Account not found");
+
+  const normalizedEmail = email.toLowerCase();
+  if (normalizedEmail === inviter.email.toLowerCase()) {
+    throw new AppError(400, "You cannot invite yourself");
+  }
+
+  const existing = await Invite.findOne({ inviterId, email: normalizedEmail });
+  if (existing) throw new AppError(409, "You have already invited this email");
+
+  const invite = await Invite.create({ inviterId, email: normalizedEmail });
+
+  return {
+    id: String(invite._id),
+    email: invite.email,
+    status: invite.status,
+    createdAt: invite.createdAt,
+  };
+}
+
+export async function getMyInvites(inviterId: string) {
+  const invites = await Invite.find({ inviterId }).sort({ createdAt: -1 });
+  const inviteCount = invites.length;
+
+  return {
+    inviteCount,
+    invites: invites.map((i) => ({
+      id: String(i._id),
+      email: i.email,
+      status: i.status,
+      createdAt: i.createdAt,
+    })),
+  };
+}
+
+export async function getInviteLeaderboard() {
+  const results = await Invite.aggregate([
+    { $group: { _id: "$inviterId", inviteCount: { $sum: 1 } } },
+    { $sort: { inviteCount: -1 } },
+    {
+      $lookup: {
+        from: "customers",
+        localField: "_id",
+        foreignField: "_id",
+        as: "customer",
+      },
+    },
+    { $unwind: "$customer" },
+    {
+      $project: {
+        _id: 0,
+        id: "$customer._id",
+        fullName: "$customer.fullName",
+        email: "$customer.email",
+        inviteCount: 1,
+      },
+    },
+  ]);
+
+  return results;
 }
