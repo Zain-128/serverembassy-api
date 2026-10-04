@@ -76,7 +76,18 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
   }
 
   if (query.q) {
-    filter.$text = { $search: query.q };
+    const trimmed = query.q.trim();
+    if (trimmed) {
+      const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "i");
+      filter.$or = [
+        { sku: regex },
+        { title: regex },
+        { description: regex },
+        { mpn: regex },
+        { gtin: regex },
+      ];
+    }
   }
 
   if (query.categorySlug) {

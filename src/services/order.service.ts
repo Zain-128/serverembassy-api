@@ -44,7 +44,8 @@ async function nextOrderNumber() {
 export type CheckoutInput = {
   email: string;
   customerId?: string;
-  paymentMethod: "card" | "paypal" | "wire" | "purchase_order" | "net_terms";
+  paymentMethod: "stripe" | "cod" | "card" | "paypal" | "wire" | "purchase_order" | "net_terms";
+  paymentIntentId?: string;
   shippingMethodCode?: string;
   couponCode?: string;
   billingAddress: Record<string, unknown>;

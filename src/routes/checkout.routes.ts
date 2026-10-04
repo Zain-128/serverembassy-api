@@ -3,9 +3,30 @@ import { z } from "zod";
 import { NewsletterSubscriber } from "../models/index.js";
 import * as orderService from "../services/order.service.js";
 import * as contactService from "../services/contact.service.js";
+import * as stripeService from "../services/stripe.service.js";
 import { validateBody } from "../middleware/validate.js";
 
 const router = Router();
+
+router.post(
+  "/create-payment-intent",
+  validateBody(
+    z.object({
+      amount: z.number().positive(),
+      currency: z.string().optional().default("usd"),
+      metadata: z.record(z.string()).optional(),
+    }),
+  ),
+  async (req, res, next) => {
+    try {
+      const { amount, currency, metadata } = req.body;
+      const result = await stripeService.createPaymentIntent(amount * 100, currency, metadata);
+      res.json(result);
+    } catch (e) {
+      next(e);
+    }
+  },
+);
 
 router.post(
   "/checkout",
@@ -13,7 +34,8 @@ router.post(
     z.object({
       email: z.string().email(),
       customerId: z.string().optional(),
-      paymentMethod: z.enum(["card", "paypal", "wire", "purchase_order", "net_terms"]),
+      paymentMethod: z.enum(["stripe", "cod", "card", "paypal", "wire", "purchase_order", "net_terms"]),
+      paymentIntentId: z.string().optional(),
       shippingMethodCode: z.string().optional(),
       couponCode: z.string().optional(),
       billingAddress: z.record(z.unknown()),

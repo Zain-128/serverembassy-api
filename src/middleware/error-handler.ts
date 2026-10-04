@@ -18,6 +18,22 @@ export function errorHandler(err: unknown, _req: Request, res: Response, _next: 
     });
   }
 
+  // Handle Mongoose Duplicate Key Error (E11000)
+  if (err && typeof err === "object" && (err as { code?: number }).code === 11000) {
+    const keyValue = (err as { keyValue?: Record<string, string> }).keyValue;
+    const keyStr = keyValue ? Object.keys(keyValue).join(", ") : "field";
+    return res.status(400).json({
+      error: `A record with this ${keyStr} already exists.`,
+    });
+  }
+
+  // Handle Mongoose ValidationError
+  if (err && typeof err === "object" && (err as { name?: string }).name === "ValidationError") {
+    return res.status(400).json({
+      error: (err as { message?: string }).message ?? "Validation failed",
+    });
+  }
+
   console.error(err);
   return res.status(500).json({ error: "Internal server error" });
 }

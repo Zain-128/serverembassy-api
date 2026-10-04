@@ -65,8 +65,15 @@ export async function getCategoryBySlug(slug: string) {
 }
 
 export async function createCategory(data: Record<string, unknown>) {
-  const doc = await Category.create(data);
-  return mapDoc(doc);
+  try {
+    const doc = await Category.create(data);
+    return mapDoc(doc);
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && (e as { code?: number }).code === 11000) {
+      throw new AppError(400, `A category with the name "${data.name ?? data.slug}" already exists.`);
+    }
+    throw e;
+  }
 }
 
 export async function updateCategory(id: string, data: Record<string, unknown>) {
@@ -110,8 +117,15 @@ export async function listBrandsPaginated(query: PaginationQuery) {
 }
 
 export async function createBrand(data: Record<string, unknown>) {
-  const doc = await Brand.create(data);
-  return mapDoc(doc);
+  try {
+    const doc = await Brand.create(data);
+    return mapDoc(doc);
+  } catch (e: unknown) {
+    if (e && typeof e === "object" && (e as { code?: number }).code === 11000) {
+      throw new AppError(400, `A brand with the name "${data.name ?? data.slug}" already exists.`);
+    }
+    throw e;
+  }
 }
 
 export async function updateBrand(id: string, data: Record<string, unknown>) {
