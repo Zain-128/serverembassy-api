@@ -198,7 +198,7 @@ const orderSchema = new Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["card", "paypal", "wire", "purchase_order", "net_terms"],
+      enum: ["stripe", "cod", "card", "paypal", "wire", "purchase_order", "net_terms"],
     },
     subtotal: { type: Number, default: 0 },
     discount: { type: Number, default: 0 },
