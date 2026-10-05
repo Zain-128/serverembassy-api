@@ -112,16 +112,19 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
   if (query.featured) filter.featured = true;
   if (query.deal) filter.isDeal = true;
 
+  // Every branch includes `_id` as a tiebreaker so skip/limit pagination is stable
+  // even when many documents share the same primary sort value (e.g. bulk-imported
+  // rows with identical createdAt) — otherwise MongoDB can skip or repeat rows across pages.
   const sort: Record<string, 1 | -1> =
     query.sort === "price_asc"
-      ? { price: 1 }
+      ? { price: 1, _id: 1 }
       : query.sort === "price_desc"
-        ? { price: -1 }
+        ? { price: -1, _id: 1 }
         : query.sort === "sku"
-          ? { sku: 1 }
+          ? { sku: 1, _id: 1 }
           : query.sort === "rating"
-            ? { rating: -1, reviewCount: -1 }
-            : { createdAt: -1 };
+            ? { rating: -1, reviewCount: -1, _id: 1 }
+            : { createdAt: -1, _id: 1 };
 
   const [docs, total] = await Promise.all([
     Product.find(filter).populate(productPopulate).sort(sort).skip(skip).limit(limit),
