@@ -248,7 +248,7 @@ export async function updateQuoteStatus(id: string, status: QuoteStatus) {
 }
 
 export async function listCustomers() {
-  const docs = await Customer.find().sort({ createdAt: -1 });
+  const docs = await Customer.find().select("-passwordHash").sort({ createdAt: -1 });
   const withCounts = await Promise.all(
     docs.map(async (c) => {
       const [orders, invites] = await Promise.all([
@@ -264,7 +264,7 @@ export async function listCustomers() {
 export async function listCustomersPaginated(query: PaginationQuery) {
   const { page, limit, skip } = paginate(query);
   const [docs, total] = await Promise.all([
-    Customer.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Customer.find().select("-passwordHash").sort({ createdAt: -1 }).skip(skip).limit(limit),
     Customer.countDocuments(),
   ]);
   const withCounts = await Promise.all(
@@ -287,7 +287,9 @@ export async function listCustomersPaginated(query: PaginationQuery) {
 
 export async function updateCustomerTaxExempt(id: string, taxExempt: TaxExemptStatus) {
   if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Customer not found");
-  const doc = await Customer.findByIdAndUpdate(id, { taxExempt }, { new: true });
+  const doc = await Customer.findByIdAndUpdate(id, { taxExempt }, { new: true }).select(
+    "-passwordHash",
+  );
   if (!doc) throw new AppError(404, "Customer not found");
   return mapDoc(doc);
 }
