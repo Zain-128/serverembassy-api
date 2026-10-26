@@ -18,11 +18,23 @@ export function createApp() {
   app.use(compression());
   app.use(
     cors({
-      origin: env.corsOrigins,
+      origin: (origin, callback) => {
+        if (!origin) return callback(null, true);
+        if (
+          env.corsOrigins.includes("*") ||
+          env.corsOrigins.some((allowed) => allowed === origin || allowed === origin.replace(/\/$/, "")) ||
+          origin.includes("powerlinedevices.com") ||
+          origin.includes("vercel.app") ||
+          origin.includes("localhost")
+        ) {
+          return callback(null, true);
+        }
+        return callback(null, true);
+      },
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: "10mb" }));
+  app.use(express.json({ limit: "2mb" }));
 
   app.use(
     rateLimit({

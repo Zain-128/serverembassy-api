@@ -1,4 +1,7 @@
-export type PaginationQuery = { page?: number; limit?: number };
+export type PaginationQuery = {
+  page?: number;
+  limit?: number;
+};
 
 export function paginate(query: PaginationQuery, defaultLimit = 50, maxLimit = 100) {
   const page = Math.max(1, Math.floor(query.page ?? 1));
@@ -6,6 +9,6 @@ export function paginate(query: PaginationQuery, defaultLimit = 50, maxLimit = 1
   return { page, limit, skip: (page - 1) * limit };
 }
 
-export function totalPagesOf(total: number, limit: number) {
+export function totalPagesOf(total: number, limit: number): number {
   return Math.max(1, Math.ceil(total / limit));
 }

@@ -8,8 +8,8 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16),
   JWT_EXPIRES_IN: z.string().default("7d"),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
-  STRIPE_SECRET_KEY: z.string().optional().default(""),
-  STRIPE_PUBLISHABLE_KEY: z.string().optional().default(""),
+  STRIPE_SECRET_KEY: z.string().optional(),
+  STRIPE_PUBLISHABLE_KEY: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);

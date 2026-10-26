@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import { Types, isValidObjectId } from "mongoose";
 import {
   Banner,
   Brand,
@@ -65,26 +65,19 @@ export async function getCategoryBySlug(slug: string) {
 }
 
 export async function createCategory(data: Record<string, unknown>) {
-  try {
-    const doc = await Category.create(data);
-    return mapDoc(doc);
-  } catch (e: unknown) {
-    if (e && typeof e === "object" && (e as { code?: number }).code === 11000) {
-      throw new AppError(400, `A category with the name "${data.name ?? data.slug}" already exists.`);
-    }
-    throw e;
-  }
+  const doc = await Category.create(data);
+  return mapDoc(doc);
 }
 
 export async function updateCategory(id: string, data: Record<string, unknown>) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Category not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Category not found");
   const doc = await Category.findByIdAndUpdate(id, data, { new: true });
   if (!doc) throw new AppError(404, "Category not found");
   return mapDoc(doc);
 }
 
 export async function deleteCategory(id: string) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Category not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Category not found");
   const { Product } = await import("../models/index.js");
   const count = await Product.countDocuments({ categoryId: id });
   if (count > 0) throw new AppError(400, "Category has products. Move or delete them first.");
@@ -117,26 +110,19 @@ export async function listBrandsPaginated(query: PaginationQuery) {
 }
 
 export async function createBrand(data: Record<string, unknown>) {
-  try {
-    const doc = await Brand.create(data);
-    return mapDoc(doc);
-  } catch (e: unknown) {
-    if (e && typeof e === "object" && (e as { code?: number }).code === 11000) {
-      throw new AppError(400, `A brand with the name "${data.name ?? data.slug}" already exists.`);
-    }
-    throw e;
-  }
+  const doc = await Brand.create(data);
+  return mapDoc(doc);
 }
 
 export async function updateBrand(id: string, data: Record<string, unknown>) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Brand not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Brand not found");
   const doc = await Brand.findByIdAndUpdate(id, data, { new: true });
   if (!doc) throw new AppError(404, "Brand not found");
   return mapDoc(doc);
 }
 
 export async function deleteBrand(id: string) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Brand not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Brand not found");
   const { Product } = await import("../models/index.js");
   const count = await Product.countDocuments({ brandId: id });
   if (count > 0) throw new AppError(400, "Brand has products. Reassign or delete them first.");
@@ -188,14 +174,14 @@ export async function createBanner(data: Record<string, unknown>) {
 }
 
 export async function updateBanner(id: string, data: Record<string, unknown>) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Banner not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Banner not found");
   const doc = await Banner.findByIdAndUpdate(id, data, { new: true });
   if (!doc) throw new AppError(404, "Banner not found");
   return mapDoc(doc);
 }
 
 export async function deleteBanner(id: string) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Banner not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Banner not found");
   const result = await Banner.findByIdAndDelete(id);
   if (!result) throw new AppError(404, "Banner not found");
 }

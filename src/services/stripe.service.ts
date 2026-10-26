@@ -1,17 +1,21 @@
-import Stripe from "stripe";
+import { createRequire } from "module";
 import { env } from "../config/env.js";
 import { AppError } from "../lib/errors.js";
 
-let stripeClient: Stripe | null = null;
+const require = createRequire(import.meta.url);
+let stripeClient: any = null;
 
-function getStripe(): Stripe {
-  if (!env.STRIPE_SECRET_KEY) {
-    throw new AppError(400, "Stripe is not configured. Please set STRIPE_SECRET_KEY in environment variables.");
+function getStripe(): any {
+  const secret = process.env.STRIPE_SECRET_KEY || env.STRIPE_SECRET_KEY;
+  if (!secret) {
+    throw new AppError(
+      400,
+      "Stripe payment is not configured on the server. Please set STRIPE_SECRET_KEY in .env, or use Cash on Delivery (COD).",
+    );
   }
   if (!stripeClient) {
-    stripeClient = new Stripe(env.STRIPE_SECRET_KEY, {
-      apiVersion: "2025-02-24.acacia" as any,
-    });
+    const Stripe = require("stripe");
+    stripeClient = new Stripe(secret);
   }
   return stripeClient;
 }
@@ -23,15 +27,18 @@ export async function createPaymentIntent(
 ) {
   const stripe = getStripe();
   const paymentIntent = await stripe.paymentIntents.create({
-    amount: Math.max(50, Math.round(amountInCents)), // Stripe min amount is 50 cents ($0.50)
+    amount: Math.max(50, Math.round(amountInCents)),
     currency: currency.toLowerCase(),
     automatic_payment_methods: { enabled: true },
     metadata,
   });
-
   return {
     clientSecret: paymentIntent.client_secret,
     paymentIntentId: paymentIntent.id,
-    publishableKey: env.STRIPE_PUBLISHABLE_KEY,
+    publishableKey:
+      process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
+      process.env.STRIPE_PUBLISHABLE_KEY ||
+      env.STRIPE_PUBLISHABLE_KEY ||
+      "",
   };
 }

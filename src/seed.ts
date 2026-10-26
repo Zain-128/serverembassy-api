@@ -20,11 +20,7 @@ async function main() {
 
   await StoreSettings.findOneAndUpdate(
     { key: "default" },
-    {
-      key: "default",
-      storeName: "Power Line Devices",
-      tagline: "Enterprise IT hardware",
-    },
+    { key: "default" },
     { upsert: true },
   );
 

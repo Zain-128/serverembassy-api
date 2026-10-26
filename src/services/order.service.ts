@@ -1,8 +1,7 @@
-import { Types } from "mongoose";
+import { Types, isValidObjectId } from "mongoose";
 import {
   Counter,
   Customer,
-  Invite,
   Order,
   Product,
   Quote,
@@ -48,6 +47,8 @@ export type CheckoutInput = {
   paymentIntentId?: string;
   shippingMethodCode?: string;
   couponCode?: string;
+  createAccount?: boolean;
+  password?: string;
   billingAddress: Record<string, unknown>;
   shippingAddress: Record<string, unknown>;
   items: Array<{ productId: string; qty: number }>;
@@ -60,7 +61,7 @@ export async function createOrder(input: CheckoutInput) {
   const threshold = settings?.freeShippingThreshold ?? 199;
   const taxRate = settings?.taxRate ?? 0.07;
 
-  const productIds = input.items.map((i) => i.productId).filter(Types.ObjectId.isValid);
+  const productIds = input.items.map((i) => i.productId).filter(isValidObjectId);
   const products = await Product.find({
     _id: { $in: productIds },
     status: "published",
@@ -116,11 +117,20 @@ export async function createOrder(input: CheckoutInput) {
       decremented.set(item.productId, (decremented.get(item.productId) ?? 0) + item.qty);
     }
 
+    const paymentStatus =
+      input.paymentMethod === "stripe" || input.paymentMethod === "card"
+        ? input.paymentIntentId
+          ? "paid"
+          : "authorized"
+        : "pending";
+
     const order = await Order.create({
       orderNumber: await nextOrderNumber(),
-      customerId: input.customerId && Types.ObjectId.isValid(input.customerId) ? input.customerId : undefined,
+      customerId: input.customerId && isValidObjectId(input.customerId) ? input.customerId : undefined,
       email: input.email,
       paymentMethod: input.paymentMethod,
+      paymentStatus,
+      paymentIntentId: input.paymentIntentId ?? "",
       shippingMethodCode: input.shippingMethodCode,
       couponCode: input.couponCode,
       subtotal,
@@ -133,11 +143,32 @@ export async function createOrder(input: CheckoutInput) {
       items: lineItems,
     });
 
+    if (input.createAccount && input.password && !order.customerId) {
+      try {
+        const existing = await Customer.findOne({ email: input.email.toLowerCase() });
+        if (!existing) {
+          const bcryptModule = await import("bcryptjs");
+          const bcryptLib = (bcryptModule as any).default || bcryptModule;
+          const passwordHash = await bcryptLib.hash(input.password, 10);
+          const fullName = `${(input.billingAddress as Record<string, string>)?.firstName ?? ""} ${(input.billingAddress as Record<string, string>)?.lastName ?? ""}`.trim();
+          const newCust = await Customer.create({
+            email: input.email.toLowerCase(),
+            passwordHash,
+            fullName,
+          });
+          order.customerId = newCust._id;
+          await order.save();
+        }
+      } catch (err) {
+        console.warn("Auto-create customer notice:", err);
+      }
+    }
+
     if (input.couponCode) await couponService.redeemCoupon(input.couponCode);
 
     return mapDoc(order);
   } catch (e) {
-    for (const [productId, qty] of decremented) {
+    for (const [productId, qty] of Array.from(decremented.entries())) {
       await Product.updateOne({ _id: productId }, { $inc: { stock: qty } });
     }
     throw e;
@@ -165,7 +196,7 @@ export async function listOrders(query: { page?: number; limit?: number; status?
 }
 
 export async function getOrder(id: string) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Order not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Order not found");
   const doc = await Order.findById(id);
   if (!doc) throw new AppError(404, "Order not found");
   return mapDoc(doc);
@@ -192,7 +223,7 @@ export async function listCustomerOrders(customerId: string, query: { page?: num
 }
 
 export async function updateOrderStatus(id: string, status: OrderStatus) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Order not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Order not found");
   const doc = await Order.findByIdAndUpdate(id, { status }, { new: true });
   if (!doc) throw new AppError(404, "Order not found");
   return mapDoc(doc);
@@ -202,7 +233,7 @@ export async function addShipment(
   orderId: string,
   data: { carrier: string; trackingNumber: string },
 ) {
-  if (!Types.ObjectId.isValid(orderId)) throw new AppError(404, "Order not found");
+  if (!isValidObjectId(orderId)) throw new AppError(404, "Order not found");
   const doc = await Order.findByIdAndUpdate(
     orderId,
     {
@@ -241,21 +272,18 @@ export async function createQuote(data: Record<string, unknown>) {
 }
 
 export async function updateQuoteStatus(id: string, status: QuoteStatus) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Quote not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Quote not found");
   const doc = await Quote.findByIdAndUpdate(id, { status }, { new: true });
   if (!doc) throw new AppError(404, "Quote not found");
   return mapDoc(doc);
 }
 
 export async function listCustomers() {
-  const docs = await Customer.find().select("-passwordHash").sort({ createdAt: -1 });
+  const docs = await Customer.find().sort({ createdAt: -1 });
   const withCounts = await Promise.all(
     docs.map(async (c) => {
-      const [orders, invites] = await Promise.all([
-        Order.countDocuments({ customerId: c._id }),
-        Invite.countDocuments({ inviterId: c._id }),
-      ]);
-      return { ...mapDoc(c), orderCount: orders, inviteCount: invites };
+      const orders = await Order.countDocuments({ customerId: c._id });
+      return { ...mapDoc(c), orderCount: orders };
     }),
   );
   return withCounts;
@@ -264,16 +292,13 @@ export async function listCustomers() {
 export async function listCustomersPaginated(query: PaginationQuery) {
   const { page, limit, skip } = paginate(query);
   const [docs, total] = await Promise.all([
-    Customer.find().select("-passwordHash").sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Customer.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
     Customer.countDocuments(),
   ]);
   const withCounts = await Promise.all(
     docs.map(async (c) => {
-      const [orders, invites] = await Promise.all([
-        Order.countDocuments({ customerId: c._id }),
-        Invite.countDocuments({ inviterId: c._id }),
-      ]);
-      return { ...mapDoc(c), orderCount: orders, inviteCount: invites };
+      const orders = await Order.countDocuments({ customerId: c._id });
+      return { ...mapDoc(c), orderCount: orders };
     }),
   );
   return {
@@ -286,10 +311,8 @@ export async function listCustomersPaginated(query: PaginationQuery) {
 }
 
 export async function updateCustomerTaxExempt(id: string, taxExempt: TaxExemptStatus) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Customer not found");
-  const doc = await Customer.findByIdAndUpdate(id, { taxExempt }, { new: true }).select(
-    "-passwordHash",
-  );
+  if (!isValidObjectId(id)) throw new AppError(404, "Customer not found");
+  const doc = await Customer.findByIdAndUpdate(id, { taxExempt }, { new: true });
   if (!doc) throw new AppError(404, "Customer not found");
   return mapDoc(doc);
 }

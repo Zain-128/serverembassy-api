@@ -12,15 +12,16 @@ router.post(
   "/create-payment-intent",
   validateBody(
     z.object({
-      amount: z.number().positive(),
-      currency: z.string().optional().default("usd"),
+      amount: z.number().positive("Amount must be greater than 0"),
+      currency: z.string().default("usd"),
       metadata: z.record(z.string()).optional(),
     }),
   ),
   async (req, res, next) => {
     try {
       const { amount, currency, metadata } = req.body;
-      const result = await stripeService.createPaymentIntent(amount * 100, currency, metadata);
+      const amountInCents = Math.round(amount * 100);
+      const result = await stripeService.createPaymentIntent(amountInCents, currency, metadata);
       res.json(result);
     } catch (e) {
       next(e);
@@ -32,22 +33,32 @@ router.post(
   "/checkout",
   validateBody(
     z.object({
-      email: z.string().email(),
+      email: z.string().email("Invalid email address"),
       customerId: z.string().optional(),
-      paymentMethod: z.enum(["stripe", "cod", "card", "paypal", "wire", "purchase_order", "net_terms"]),
+      paymentMethod: z.enum([
+        "stripe",
+        "cod",
+        "card",
+        "paypal",
+        "wire",
+        "purchase_order",
+        "net_terms",
+      ]),
       paymentIntentId: z.string().optional(),
       shippingMethodCode: z.string().optional(),
       couponCode: z.string().optional(),
-      billingAddress: z.record(z.unknown()),
-      shippingAddress: z.record(z.unknown()),
+      createAccount: z.boolean().optional(),
+      password: z.string().optional(),
+      billingAddress: z.record(z.unknown()).default({}),
+      shippingAddress: z.record(z.unknown()).default({}),
       items: z
         .array(
           z.object({
-            productId: z.string().min(1),
-            qty: z.number().int().positive(),
+            productId: z.string().min(1, "Product ID required"),
+            qty: z.number().int().positive("Quantity must be positive"),
           }),
         )
-        .min(1),
+        .min(1, "Cart cannot be empty"),
     }),
   ),
   async (req, res, next) => {

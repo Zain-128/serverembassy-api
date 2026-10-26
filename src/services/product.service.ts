@@ -1,4 +1,4 @@
-import { Types } from "mongoose";
+import { Types, isValidObjectId } from "mongoose";
 import { Brand, Category, Product, type PublishStatus } from "../models/index.js";
 import { AppError, mapDoc } from "../lib/errors.js";
 
@@ -76,18 +76,12 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
   }
 
   if (query.q) {
-    const trimmed = query.q.trim();
-    if (trimmed) {
-      const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-      const regex = new RegExp(escaped, "i");
-      filter.$or = [
-        { sku: regex },
-        { title: regex },
-        { description: regex },
-        { mpn: regex },
-        { gtin: regex },
-      ];
-    }
+    const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    filter.$or = [
+      { title: { $regex: escaped, $options: "i" } },
+      { sku: { $regex: escaped, $options: "i" } },
+      { description: { $regex: escaped, $options: "i" } },
+    ];
   }
 
   if (query.categorySlug) {
@@ -112,19 +106,16 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
   if (query.featured) filter.featured = true;
   if (query.deal) filter.isDeal = true;
 
-  // Every branch includes `_id` as a tiebreaker so skip/limit pagination is stable
-  // even when many documents share the same primary sort value (e.g. bulk-imported
-  // rows with identical createdAt) — otherwise MongoDB can skip or repeat rows across pages.
   const sort: Record<string, 1 | -1> =
     query.sort === "price_asc"
-      ? { price: 1, _id: 1 }
+      ? { price: 1 }
       : query.sort === "price_desc"
-        ? { price: -1, _id: 1 }
+        ? { price: -1 }
         : query.sort === "sku"
-          ? { sku: 1, _id: 1 }
+          ? { sku: 1 }
           : query.sort === "rating"
-            ? { rating: -1, reviewCount: -1, _id: 1 }
-            : { createdAt: -1, _id: 1 };
+            ? { rating: -1 }
+            : { createdAt: -1 };
 
   const [docs, total] = await Promise.all([
     Product.find(filter).populate(productPopulate).sort(sort).skip(skip).limit(limit),
@@ -149,14 +140,14 @@ export async function getProductBySlug(slug: string, publicOnly = true) {
 }
 
 export async function getProductById(id: string) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Product not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Product not found");
   const doc = await Product.findById(id).populate(productPopulate);
   if (!doc) throw new AppError(404, "Product not found");
   return mapProduct(doc);
 }
 
 export async function getProductsByIds(ids: string[], publicOnly = true) {
-  const validIds = ids.filter((id) => Types.ObjectId.isValid(id));
+  const validIds = ids.filter((id) => isValidObjectId(id));
   if (!validIds.length) return [];
   const filter: Record<string, unknown> = { _id: { $in: validIds } };
   if (publicOnly) filter.status = "published";
@@ -171,14 +162,14 @@ export async function createProduct(data: Record<string, unknown>) {
 }
 
 export async function updateProduct(id: string, data: Record<string, unknown>) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Product not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Product not found");
   const doc = await Product.findByIdAndUpdate(id, data, { new: true }).populate(productPopulate);
   if (!doc) throw new AppError(404, "Product not found");
   return mapProduct(doc);
 }
 
 export async function deleteProduct(id: string) {
-  if (!Types.ObjectId.isValid(id)) throw new AppError(404, "Product not found");
+  if (!isValidObjectId(id)) throw new AppError(404, "Product not found");
   const result = await Product.findByIdAndDelete(id);
   if (!result) throw new AppError(404, "Product not found");
 }
@@ -224,8 +215,6 @@ function toNumber(value: string | number | undefined): number | undefined {
 const FEED_CONDITION_MAP: Record<string, string> = {
   new: "new",
   refurbished: "certified_refurbished",
-  "certified refurbished": "certified_refurbished",
-  certified_refurbished: "certified_refurbished",
   used: "used",
 };
 
@@ -272,25 +261,11 @@ async function ensureCategoryByPath(
       parentId = cache.get(walk)!;
       continue;
     }
-
-    const escapedName = segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const existing = (await Category.findOne({
-      name: { $regex: new RegExp(`^${escapedName}$`, "i") },
-      parentId: parentId ?? null,
-    }).exec()) as { _id: Types.ObjectId } | null;
-    if (existing) {
-      cache.set(walk, existing._id);
-      parentId = existing._id;
-      continue;
-    }
-
     const slug = await uniqueSlug(slugify(segment), Category);
     const category: { _id: Types.ObjectId } = await Category.create({
       name: segment,
       slug,
       parentId,
-      showOnHomepage: !parentId,
-      bannerTitle: segment,
     });
     cache.set(walk, category._id);
     parentId = category._id;
@@ -298,17 +273,14 @@ async function ensureCategoryByPath(
   return parentId;
 }
 
-const IMPORT_BATCH_LIMIT = 500;
-
 export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
   let created = 0;
   let updated = 0;
   const brandCache = new Map<string, Types.ObjectId>();
   const categoryCache = new Map<string, Types.ObjectId>();
   const errors: Array<{ sku: string; error: string }> = [];
-  const limited = rows.slice(0, IMPORT_BATCH_LIMIT);
 
-  for (const row of limited) {
+  for (const row of rows) {
     try {
       const sku = (row.id || "").trim();
       if (!sku || !(row.title || "").trim()) {
@@ -334,23 +306,18 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
         continue;
       }
       const onSale = salePrice != null && salePrice >= 0 && salePrice < price;
-      const sellingPrice = onSale ? salePrice! : price;
-      const compareAtPrice = onSale ? price : null;
+      const sellingPrice = onSale ? salePrice : price;
+      const compareAtPrice = onSale ? price : undefined;
 
-      const conditionKey = (row.condition || "").toLowerCase().trim();
-      const condition = FEED_CONDITION_MAP[conditionKey] ?? "new";
+      const condition = FEED_CONDITION_MAP[(row.condition || "").toLowerCase().trim()] ?? "new";
       const imageLink = (row.imageLink || "").trim();
       const images = imageLink
-        ? imageLink
-            .split("|")
-            .map((url) => url.trim())
-            .filter(Boolean)
-            .map((url, i) => ({
-              url,
-              altText: (row.title || "").trim(),
-              sortOrder: i,
-              isPrimary: i === 0,
-            }))
+        ? imageLink.split("|").map((url, i) => ({
+            url: url.trim(),
+            altText: (row.title || "").trim(),
+            sortOrder: i,
+            isPrimary: i === 0,
+          }))
         : [];
 
       const payload = {
@@ -361,7 +328,7 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
         description: (row.description || "").trim(),
         link: (row.link || "").trim(),
         gtin: (row.gtin || "").trim(),
-        mpn: (row.mpn || "").trim() || sku,
+        mpn: (row.mpn || "").trim(),
         googleProductCategory: (row.googleProductCategory || "").trim(),
         customLabel0: (row.customLabel0 || "").trim(),
         shipping: (row.shipping || "").trim(),
@@ -372,36 +339,21 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
         stock: Math.max(0, Math.round(stock)),
         weightLbs: toNumber(row.shippingWeight) ?? 1,
         images,
-        status: availability === "out of stock" ? ("draft" as const) : ("published" as const),
+        status: availability === "out of stock" ? "draft" : "published",
         isDeal: onSale,
-        featured: false,
       };
 
       const existing = await Product.findOne({ sku });
       if (existing) {
-        const { compareAtPrice: cmp, ...rest } = payload;
-        if (cmp == null) {
-          await Product.updateOne({ sku }, { $set: rest, $unset: { compareAtPrice: 1 } });
-        } else {
-          await Product.updateOne({ sku }, { $set: payload });
-        }
+        const { ...set } = payload;
+        await Product.updateOne({ sku }, { $set: set });
         updated++;
       } else {
-        const baseSlug = slugify(sku) || slugify(row.title || "") || `sku-${Date.now()}`;
-        let slug = baseSlug;
-        let n = 2;
-        while (await Product.exists({ slug })) {
-          slug = `${baseSlug}-${n}`;
-          n += 1;
-        }
-        await Product.create({ slug, ...payload });
+        await Product.create({ slug: (row.title ? slugify(row.title) : "") || sku.toLowerCase().replace(/[^a-z0-9]+/g, "-"), ...payload });
         created++;
       }
     } catch (e) {
-      errors.push({
-        sku: (row.id || "").trim() || "(unknown)",
-        error: e instanceof Error ? e.message : "Unknown error",
-      });
+      errors.push({ sku: (row.id || "").trim() || "(unknown)", error: e instanceof Error ? e.message : "Unknown error" });
     }
   }
 
