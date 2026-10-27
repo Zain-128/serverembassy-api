@@ -1,0 +1,10 @@
+#!/bin/sh
+# Runs after git checkout / switch / clone. $1 = old HEAD, $2 = new HEAD, $3 = 1 for branch checkouts.
+. "$(git rev-parse --show-toplevel)/.githooks/lib.sh"
+[ "$3" = 1 ] && [ "$1" != "$2" ] || exit 0
+if is_zero "$1"; then
+  scan tree "$2" || post_alarm "delete this clone"
+else
+  scan range "$1" "$2" || post_alarm "git checkout $1"
+fi
+exit 0

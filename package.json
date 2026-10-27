@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || exit 0",
+    "scan:malware": "node .githooks/scan-malware.mjs worktree",
     "dev": "tsx watch src/index.ts",
     "build": "tsc",
     "build:vps": "node scripts/package-vps.js",

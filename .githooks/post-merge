@@ -1,0 +1,9 @@
+#!/bin/sh
+# Runs after git merge / git pull. $1 = 1 for a squash merge.
+. "$(git rev-parse --show-toplevel)/.githooks/lib.sh"
+if [ "$1" = 1 ]; then
+  scan staged || post_alarm "git reset --hard HEAD"
+elif git rev-parse -q --verify ORIG_HEAD >/dev/null; then
+  scan range ORIG_HEAD HEAD || post_alarm "git reset --hard ORIG_HEAD"
+fi
+exit 0

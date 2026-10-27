@@ -1,0 +1,13 @@
+#!/bin/sh
+# Blocks pushes that would publish malware-like content. Bypass: git push --no-verify
+. "$(git rev-parse --show-toplevel)/.githooks/lib.sh"
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  is_zero "$local_sha" && continue # branch deletion
+  if is_zero "$remote_sha" || ! git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    scan tree "$local_sha" || status=1
+  else
+    scan range "$remote_sha" "$local_sha" || status=1
+  fi
+done
+exit $status

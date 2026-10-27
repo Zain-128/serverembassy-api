@@ -1,11 +1,10 @@
-import { createRequire } from "module";
+import Stripe from "stripe";
 import { env } from "../config/env.js";
 import { AppError } from "../lib/errors.js";
 
-const require = createRequire(import.meta.url);
-let stripeClient: any = null;
+let stripeClient: Stripe | null = null;
 
-function getStripe(): any {
+function getStripe(): Stripe {
   const secret = process.env.STRIPE_SECRET_KEY || env.STRIPE_SECRET_KEY;
   if (!secret) {
     throw new AppError(
@@ -14,7 +13,6 @@ function getStripe(): any {
     );
   }
   if (!stripeClient) {
-    const Stripe = require("stripe");
     stripeClient = new Stripe(secret);
   }
   return stripeClient;
@@ -41,4 +39,14 @@ export async function createPaymentIntent(
       env.STRIPE_PUBLISHABLE_KEY ||
       "",
   };
+}
+
+export async function retrievePaymentIntent(paymentIntentId: string): Promise<{ status: string; amount: number; currency: string } | null> {
+  try {
+    const stripe = getStripe();
+    return await stripe.paymentIntents.retrieve(paymentIntentId);
+  } catch (err) {
+    console.error("Failed to retrieve payment intent from Stripe:", err);
+    return null;
+  }
 }

@@ -1,0 +1,5 @@
+#!/bin/sh
+# Blocks merge commits whose merged result contains malware-like content.
+# Fast-forward merges skip this hook; post-merge covers them.
+. "$(git rev-parse --show-toplevel)/.githooks/lib.sh"
+scan staged

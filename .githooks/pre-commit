@@ -1,0 +1,4 @@
+#!/bin/sh
+# Blocks commits that stage malware-like content. Bypass: git commit --no-verify
+. "$(git rev-parse --show-toplevel)/.githooks/lib.sh"
+scan staged
