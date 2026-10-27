@@ -13,6 +13,7 @@ import {
 import { AppError, mapDoc } from "../lib/errors.js";
 import { paginate, totalPagesOf, type PaginationQuery } from "../lib/paginate.js";
 import * as couponService from "./coupon.service.js";
+import * as stripeService from "./stripe.service.js";
 
 const ORDER_NUMBER_BASE = 1000;
 
@@ -117,12 +118,22 @@ export async function createOrder(input: CheckoutInput) {
       decremented.set(item.productId, (decremented.get(item.productId) ?? 0) + item.qty);
     }
 
-    const paymentStatus =
-      input.paymentMethod === "stripe" || input.paymentMethod === "card"
-        ? input.paymentIntentId
-          ? "paid"
-          : "authorized"
-        : "pending";
+    let paymentStatus: "paid" | "authorized" | "pending" = "pending";
+    if (input.paymentMethod === "stripe" || input.paymentMethod === "card") {
+      if (input.paymentIntentId) {
+        const intent = await stripeService.retrievePaymentIntent(input.paymentIntentId);
+        if (intent && intent.status === "succeeded") {
+          paymentStatus = "paid";
+        } else if (intent && intent.status === "requires_capture") {
+          paymentStatus = "authorized";
+        } else {
+          // Unconfirmed or failed PaymentIntent must never be marked as paid
+          paymentStatus = "pending";
+        }
+      } else {
+        paymentStatus = "pending";
+      }
+    }
 
     const order = await Order.create({
       orderNumber: await nextOrderNumber(),
@@ -279,7 +290,7 @@ export async function updateQuoteStatus(id: string, status: QuoteStatus) {
 }
 
 export async function listCustomers() {
-  const docs = await Customer.find().sort({ createdAt: -1 });
+  const docs = await Customer.find().select("-passwordHash").sort({ createdAt: -1 });
   const withCounts = await Promise.all(
     docs.map(async (c) => {
       const orders = await Order.countDocuments({ customerId: c._id });
@@ -292,7 +303,7 @@ export async function listCustomers() {
 export async function listCustomersPaginated(query: PaginationQuery) {
   const { page, limit, skip } = paginate(query);
   const [docs, total] = await Promise.all([
-    Customer.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Customer.find().select("-passwordHash").sort({ createdAt: -1 }).skip(skip).limit(limit),
     Customer.countDocuments(),
   ]);
   const withCounts = await Promise.all(
@@ -312,7 +323,7 @@ export async function listCustomersPaginated(query: PaginationQuery) {
 
 export async function updateCustomerTaxExempt(id: string, taxExempt: TaxExemptStatus) {
   if (!isValidObjectId(id)) throw new AppError(404, "Customer not found");
-  const doc = await Customer.findByIdAndUpdate(id, { taxExempt }, { new: true });
+  const doc = await Customer.findByIdAndUpdate(id, { taxExempt }, { new: true }).select("-passwordHash");
   if (!doc) throw new AppError(404, "Customer not found");
   return mapDoc(doc);
 }

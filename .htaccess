@@ -1,9 +1,16 @@
-# Hostinger hPanel Node.js / Apache Proxy Configuration
-DirectoryIndex index.js
+# Hostinger hPanel LiteSpeed / Apache Reverse Proxy Configuration for ServerEmbassy API
+DirectoryIndex disabled
+Options -Indexes
 
 <IfModule mod_rewrite.c>
-    RewriteEngine On
-    RewriteCond %{REQUEST_FILENAME} !-f
-    RewriteCond %{REQUEST_FILENAME} !-d
-    RewriteRule ^(.*)$ http://127.0.0.1:4000/$1 [P,L]
+  RewriteEngine On
+  RewriteCond %{REQUEST_URI} ^/\.well-known/ [NC]
+  RewriteRule ^ - [L]
+
+  RewriteCond %{HTTP:Upgrade} =websocket [NC]
+  RewriteRule /(.*) ws://127.0.0.1:4000/$1 [P,L]
+
+  RewriteCond %{REQUEST_FILENAME} !-f
+  RewriteCond %{REQUEST_FILENAME} !-d
+  RewriteRule ^(.*)$ http://127.0.0.1:4000/$1 [P,L]
 </IfModule>

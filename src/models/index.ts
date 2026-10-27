@@ -49,7 +49,7 @@ const staffUserSchema = new Schema(
 const storeSettingsSchema = new Schema(
   {
     key: { type: String, default: "default", unique: true },
-    storeName: { type: String, default: "Server Embassy" },
+    storeName: { type: String, default: "Power Line Devices" },
     tagline: String,
     phone: String,
     supportEmail: String,
@@ -288,6 +288,15 @@ const counterSchema = new Schema({
   seq: { type: Number, default: 0 },
 });
 
+const inviteSchema = new Schema(
+  {
+    inviterId: { type: Schema.Types.ObjectId, ref: "Customer", required: true, index: true },
+    email: { type: String, required: true, lowercase: true },
+    status: { type: String, enum: ["pending", "accepted", "expired"], default: "pending", index: true },
+  },
+  { timestamps: true },
+);
+
 export type StaffUserDoc = InferSchemaType<typeof staffUserSchema>;
 export type ProductDoc = InferSchemaType<typeof productSchema> & { _id: Types.ObjectId };
 
@@ -304,4 +313,5 @@ export const Quote = model("Quote", quoteSchema);
 export const NewsletterSubscriber = model("NewsletterSubscriber", newsletterSchema);
 export const ContactMessage = model("ContactMessage", contactMessageSchema);
 export const Coupon = model("Coupon", couponSchema);
+export const Invite = model("Invite", inviteSchema);
 export const Counter = model("Counter", counterSchema);

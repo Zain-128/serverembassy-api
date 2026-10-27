@@ -4,6 +4,7 @@ import helmet from "helmet";
 import compression from "compression";
 import rateLimit from "express-rate-limit";
 import { env } from "./config/env.js";
+import { AppError } from "./lib/errors.js";
 import { errorHandler, notFound } from "./middleware/error-handler.js";
 import authRoutes from "./routes/auth.routes.js";
 import storeRoutes from "./routes/store.routes.js";
@@ -20,16 +21,18 @@ export function createApp() {
     cors({
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        if (
+        const isAllowed =
           env.corsOrigins.includes("*") ||
           env.corsOrigins.some((allowed) => allowed === origin || allowed === origin.replace(/\/$/, "")) ||
-          origin.includes("powerlinedevices.com") ||
-          origin.includes("vercel.app") ||
-          origin.includes("localhost")
-        ) {
+          origin.endsWith("powerlinedevices.com") ||
+          origin.endsWith(".vercel.app") ||
+          origin.includes("localhost") ||
+          origin.includes("127.0.0.1");
+
+        if (isAllowed) {
           return callback(null, true);
         }
-        return callback(null, true);
+        return callback(new AppError(403, "Origin not allowed by CORS"));
       },
       credentials: true,
     }),

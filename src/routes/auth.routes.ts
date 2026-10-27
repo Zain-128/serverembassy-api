@@ -68,4 +68,40 @@ router.get("/customer/me", requireAuth, requireCustomer, async (req, res, next) 
   }
 });
 
+router.delete(
+  "/customer/account",
+  requireAuth,
+  requireCustomer,
+  validateBody(z.object({ password: z.string().min(1) })),
+  async (req, res, next) => {
+    try {
+      res.json(await authService.deleteCustomer(req.auth!.sub, req.body.password));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.post(
+  "/customer/invite",
+  requireAuth,
+  requireCustomer,
+  validateBody(z.object({ email: z.string().email() })),
+  async (req, res, next) => {
+    try {
+      res.status(201).json(await authService.sendInvite(req.auth!.sub, req.body.email));
+    } catch (e) {
+      next(e);
+    }
+  },
+);
+
+router.get("/customer/invites", requireAuth, requireCustomer, async (req, res, next) => {
+  try {
+    res.json(await authService.getMyInvites(req.auth!.sub));
+  } catch (e) {
+    next(e);
+  }
+});
+
 export default router;
