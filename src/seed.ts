@@ -245,45 +245,40 @@ async function main() {
     {
       slug: "shipping",
       title: "Shipping Policy",
-      body: `## Order Processing & Handling
-All orders for in-stock enterprise hardware are processed and packed within 1–2 business days (Monday through Friday, excluding federal holidays). Orders placed before 2:00 PM EST on business days are queued for expedited carrier pickup on the same day.
+      body: `## Order Fulfillment & Processing
+In-stock orders are processed and prepared for dispatch within 1–2 business days (Monday through Friday, excluding federal holidays).
 
 ## Shipping Methods & Domestic Delivery
-We partner with FedEx, UPS, and certified freight carriers to ensure timely and secure transit for critical infrastructure components.
-- Ground Shipping: Delivered within 3–5 business days across the continental United States. Orders qualifying over $199 unlock complimentary standard ground shipping.
-- Expedited Air (Overnight & 2-Day): Available at checkout for time-sensitive emergency hardware deployments.
-- LTL & Palletized Freight: Required for large enterprise chassis, multi-node rack servers, and high-density SAN enclosures. Lift-gate delivery and dock coordination are available upon request.
+Orders are shipped via major national carriers (including FedEx and UPS) or certified freight carriers for heavy rack-mount equipment.
+- Standard Ground Shipping: Typically delivers within 3–5 business days across the continental United States.
+- Free Shipping: Orders qualifying over $199 unlock complimentary standard ground shipping. For orders under $199, standard shipping is calculated at checkout.
+- Freight Deliveries: Palletized or multi-node server orders require freight handling. Our logistics team will coordinate dispatch details upon order confirmation.
 
-## International Shipments & Customs
-Power Line Devices ships enterprise IT equipment worldwide. All international shipments are processed Delivery At Place (DAP) unless arranged otherwise with your account manager. Import duties, customs clearance tariffs, and local taxes are the responsibility of the consignee.
+## Tracking & Order Status
+A carrier tracking number is generated and sent to your order email address as soon as your shipment is dispatched.
 
-## Tracking & Transit Insurance
-A tracking number and bill of lading (BOL) are automatically generated and sent via email upon carrier scan. Every shipment is fully insured against damage or loss during transit until delivery confirmation.
-
-## Delivery Inquiries & Support
-If you have questions regarding expedited courier routing, freight handling, or scheduling a specific delivery window, please contact our logistics desk at (321) 788-5899 or email info@powerlinedevices.com.`,
+## Custom Shipping Inquiries
+If you have special shipping instructions, dock delivery requirements, or international shipping inquiries, please contact our support desk directly at (321) 788-5899 or email info@powerlinedevices.com before placing your order.`,
     },
     {
       slug: "returns",
       title: "Return Policy",
       body: `## 30-Day Return Window & RMA Authorization
-We back our enterprise hardware with a 30-day return window from the confirmed carrier delivery date. Before returning any equipment, you must request a Return Merchandise Authorization (RMA) number from our support desk. Packages received without an authorized RMA number will be refused.
+We offer a 30-day return window from the date of confirmed delivery. Before returning any equipment, you must contact our support desk to receive a Return Merchandise Authorization (RMA) number. Returns received without an RMA number cannot be accepted.
 
-## Eligibility & Condition Requirements
-To be eligible for a return or exchange:
-- Items must be in their original received condition with all factory serial numbers, tamper-evident seals, and warranty stickers intact.
-- All original accessories, power cords, transceivers, brackets, and static-shielding packaging must be included.
-- Defective hardware or incorrect items delivered will be replaced or refunded with zero restocking fees.
-- Customer-remorse returns or incorrectly ordered hardware may be subject to a standard 15% restocking and testing fee to cover component bench-recertification.
+## Condition & Eligibility
+- Items must be returned in their original condition with all serial numbers, manufacturer tags, and warranty seals intact.
+- All original power cables, brackets, transceivers, and packaging materials must be included with the return.
+- If you receive a defective or incorrect item, contact our team immediately and we will provide a replacement or full refund.
 
-## Hardware Warranty & Replacement
-Certified Refurbished hardware includes our comprehensive 30-day hardware replacement warranty. If a component fails under standard operating data center conditions within the warranty period, our technical staff will dispatch an advance replacement or issue a full refund upon diagnostics.
+## Warranty Coverage
+Certified refurbished and used hardware items include a 30-day hardware replacement warranty. If a component experiences a hardware failure under normal operating conditions within 30 days of delivery, our support team will replace the unit or issue a refund.
 
-## Refund Processing Timeline
-Once your return is delivered to our Florida testing facility, our certified technicians inspect and bench-test the hardware within 2–3 business days. Approved refunds are credited directly to your original payment method (Stripe card charge or wire credit) within 3–5 business days.
+## Refund Process
+Once returned items are received and inspected, approved refunds will be processed back to your original payment method within 3–5 business days.
 
-## Requesting an RMA
-To start a return or exchange, contact our customer service department at (321) 788-5899 or email info@powerlinedevices.com with your Order Number and item serial number.`,
+## Requesting a Return
+To initiate a return or warranty inquiry, please contact customer support at (321) 788-5899 or email info@powerlinedevices.com with your order number and item details.`,
     },
   ]) {
     await CmsPage.findOneAndUpdate({ slug: page.slug }, page, { upsert: true });
