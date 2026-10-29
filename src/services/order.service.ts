@@ -118,16 +118,22 @@ export async function createOrder(input: CheckoutInput) {
       decremented.set(item.productId, (decremented.get(item.productId) ?? 0) + item.qty);
     }
 
+    const expectedAmountInCents = Math.round(total * 100);
     let paymentStatus: "paid" | "authorized" | "pending" = "pending";
     if (input.paymentMethod === "stripe" || input.paymentMethod === "card") {
       if (input.paymentIntentId) {
         const intent = await stripeService.retrievePaymentIntent(input.paymentIntentId);
-        if (intent && intent.status === "succeeded") {
+        const isAmountValid =
+          intent &&
+          intent.amount >= expectedAmountInCents &&
+          intent.currency.toLowerCase() === "usd";
+
+        if (intent && intent.status === "succeeded" && isAmountValid) {
           paymentStatus = "paid";
-        } else if (intent && intent.status === "requires_capture") {
+        } else if (intent && intent.status === "requires_capture" && isAmountValid) {
           paymentStatus = "authorized";
         } else {
-          // Unconfirmed or failed PaymentIntent must never be marked as paid
+          // Unconfirmed, underpaid, or failed PaymentIntent must never be marked as paid
           paymentStatus = "pending";
         }
       } else {
