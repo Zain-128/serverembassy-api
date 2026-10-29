@@ -123,6 +123,16 @@ const productSchema = new Schema(
     dealEndsAt: Date,
     status: { type: String, enum: PUBLISH_STATUSES, default: "draft", index: true },
     images: { type: [productImageSchema], default: [] },
+    options: {
+      type: [
+        {
+          name: String,
+          position: Number,
+          values: [String],
+        },
+      ],
+      default: [],
+    },
     link: { type: String, default: "" },
     gtin: { type: String, default: "", index: true },
     mpn: { type: String, default: "", index: true },
