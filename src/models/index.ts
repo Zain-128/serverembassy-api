@@ -140,6 +140,8 @@ const productSchema = new Schema(
     customLabel0: { type: String, default: "" },
     shipping: { type: String, default: "" },
     tax: { type: String, default: "" },
+    store: { type: String, default: "serverembassy", index: true },
+    type: { type: String, default: "serverembassy", index: true },
   },
   { timestamps: true },
 );
@@ -176,12 +178,14 @@ const cmsPageSchema = new Schema(
 const orderItemSchema = new Schema(
   {
     productId: { type: Schema.Types.ObjectId, ref: "Product" },
-    sku: { type: String, required: true },
+    sku: { type: String, default: "" },
     title: { type: String, required: true },
     qty: { type: Number, required: true, min: 1 },
     unitPrice: { type: Number, required: true },
     lineTotal: { type: Number, required: true },
     weightLbs: { type: Number, default: 0 },
+    image: { type: String, default: "" },
+    selectedOption: { type: String, default: "" },
   },
   { _id: true },
 );
@@ -221,6 +225,10 @@ const orderSchema = new Schema(
     billingAddress: { type: Schema.Types.Mixed, default: {} },
     shippingAddress: { type: Schema.Types.Mixed, default: {} },
     notes: String,
+    store: { type: String, default: "serverembassy", index: true },
+    type: { type: String, default: "serverembassy", index: true },
+    tiktokUsername: { type: String, default: "" },
+    channel: { type: String, default: "web" },
     items: { type: [orderItemSchema], default: [] },
     shipments: { type: [shipmentSchema], default: [] },
     placedAt: { type: Date, default: Date.now, index: true },
@@ -238,6 +246,8 @@ const customerSchema = new Schema(
     taxExempt: { type: String, enum: TAX_EXEMPT_STATUSES, default: "none" },
     taxExemptDocumentUrl: String,
     netTermsEnabled: { type: Boolean, default: false },
+    store: { type: String, default: "serverembassy", index: true },
+    type: { type: String, default: "serverembassy", index: true },
   },
   { timestamps: true },
 );
@@ -254,6 +264,8 @@ const quoteSchema = new Schema(
     message: String,
     status: { type: String, enum: QUOTE_STATUSES, default: "new", index: true },
     assignedTo: { type: Schema.Types.ObjectId, ref: "StaffUser" },
+    store: { type: String, default: "serverembassy", index: true },
+    type: { type: String, default: "serverembassy", index: true },
   },
   { timestamps: true },
 );
@@ -261,6 +273,8 @@ const quoteSchema = new Schema(
 const newsletterSchema = new Schema(
   {
     email: { type: String, required: true, unique: true, lowercase: true },
+    store: { type: String, default: "serverembassy", index: true },
+    type: { type: String, default: "serverembassy", index: true },
     subscribedAt: { type: Date, default: Date.now },
     unsubscribedAt: Date,
   },
@@ -274,6 +288,8 @@ const contactMessageSchema = new Schema(
     subject: { type: String, default: "" },
     message: { type: String, required: true },
     read: { type: Boolean, default: false, index: true },
+    store: { type: String, default: "serverembassy", index: true },
+    type: { type: String, default: "serverembassy", index: true },
   },
   { timestamps: true },
 );

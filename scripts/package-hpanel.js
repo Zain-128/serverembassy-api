@@ -76,6 +76,7 @@ const candidateItems = [
   "app.js",
   "package.json",
   "package-lock.json",
+  ".env",
   ".env.example",
   ".htaccess",
   "ecosystem.config.cjs",

@@ -17,32 +17,42 @@ import * as stripeService from "./stripe.service.js";
 
 const ORDER_NUMBER_BASE = 1000;
 
-async function initialOrderSeq() {
-  const last = await Order.findOne({ orderNumber: /^SE-/ })
-    .sort({ orderNumber: -1 })
-    .select("orderNumber");
-  const lastSeq = last ? Number(last.orderNumber.replace("SE-", "")) : ORDER_NUMBER_BASE;
-  return Number.isFinite(lastSeq) ? lastSeq - ORDER_NUMBER_BASE : 0;
+export function normalizeStoreType(val?: string): string {
+  if (!val) return "serverembassy";
+  const lower = val.toLowerCase().trim();
+  if (lower.includes("lucky") || lower.includes("scoop")) return "luckygirl";
+  if (lower.includes("power")) return "powerline";
+  if (lower.includes("embassy") || lower.includes("server")) return "serverembassy";
+  return lower;
 }
 
-async function nextOrderNumber() {
-  let counter = await Counter.findById("orderNumber");
+async function nextOrderNumber(store = "serverembassy") {
+  const normStore = normalizeStoreType(store);
+  const prefix = normStore === "luckygirl" ? "LGS" : normStore === "powerline" ? "PL" : "SE";
+  const counterKey = `orderNumber_${prefix.toLowerCase()}`;
+
+  let counter = await Counter.findById(counterKey);
   if (!counter) {
-    const seq = await initialOrderSeq();
+    const last = await Order.findOne({ orderNumber: new RegExp(`^${prefix}-`) })
+      .sort({ orderNumber: -1 })
+      .select("orderNumber");
+    const lastSeq = last ? Number(last.orderNumber.replace(`${prefix}-`, "")) : ORDER_NUMBER_BASE;
+    const initialSeq = Number.isFinite(lastSeq) ? lastSeq - ORDER_NUMBER_BASE : 0;
     try {
-      counter = await Counter.create({ _id: "orderNumber", seq });
+      counter = await Counter.create({ _id: counterKey, seq: initialSeq });
     } catch (e: unknown) {
       if ((e as { code?: number }).code !== 11000) throw e;
-      counter = await Counter.findById("orderNumber");
+      counter = await Counter.findById(counterKey);
     }
   }
-  const updated = await Counter.findByIdAndUpdate("orderNumber", { $inc: { seq: 1 } }, { new: true });
+  const updated = await Counter.findByIdAndUpdate(counterKey, { $inc: { seq: 1 } }, { new: true });
   const seq = updated?.seq ?? counter?.seq ?? 0;
-  return `SE-${String(ORDER_NUMBER_BASE + seq)}`;
+  return `${prefix}-${String(ORDER_NUMBER_BASE + seq)}`;
 }
 
 export type CheckoutInput = {
-  email: string;
+  email?: string;
+  customerEmail?: string;
   customerId?: string;
   paymentMethod: "stripe" | "cod" | "card" | "paypal" | "wire" | "purchase_order" | "net_terms";
   paymentIntentId?: string;
@@ -50,47 +60,83 @@ export type CheckoutInput = {
   couponCode?: string;
   createAccount?: boolean;
   password?: string;
-  billingAddress: Record<string, unknown>;
-  shippingAddress: Record<string, unknown>;
-  items: Array<{ productId: string; qty: number }>;
+  billingAddress?: Record<string, unknown>;
+  shippingAddress?: Record<string, unknown>;
+  items: Array<{
+    productId?: string;
+    sku?: string;
+    title?: string;
+    price?: number;
+    unitPrice?: number;
+    qty?: number;
+    quantity?: number;
+    weightLbs?: number;
+    image?: string;
+    selectedOption?: string;
+  }>;
+  store?: string;
+  type?: string;
+  tiktokUsername?: string;
+  channel?: string;
 };
 
 export async function createOrder(input: CheckoutInput) {
-  if (!input.items.length) throw new AppError(400, "Cart is empty");
+  if (!input.items || !input.items.length) throw new AppError(400, "Cart is empty");
+
+  const email = (input.email || input.customerEmail || "").toLowerCase().trim();
+  if (!email) throw new AppError(400, "Email is required");
+
+  const rawStore = input.type || input.store || "serverembassy";
+  const storeType = normalizeStoreType(rawStore);
 
   const settings = await StoreSettings.findOne({ key: "default" });
   const threshold = settings?.freeShippingThreshold ?? 199;
   const taxRate = settings?.taxRate ?? 0.07;
 
-  const productIds = input.items.map((i) => i.productId).filter(isValidObjectId);
-  const products = await Product.find({
-    _id: { $in: productIds },
-    status: "published",
-  });
+  // Separate items into mongo-managed items vs direct items
+  const validMongoIds = input.items
+    .map((i) => i.productId)
+    .filter((id): id is string => Boolean(id && isValidObjectId(id)));
 
-  if (products.length !== input.items.length) {
-    throw new AppError(400, "One or more products are unavailable");
-  }
-
+  const products = validMongoIds.length
+    ? await Product.find({ _id: { $in: validMongoIds }, status: "published" })
+    : [];
   const productMap = new Map(products.map((p) => [String(p._id), p]));
-  let subtotal = 0;
 
-  const lineItems = input.items.map((item) => {
-    const product = productMap.get(item.productId)!;
-    if (product.stock < item.qty) {
-      throw new AppError(400, `Insufficient stock for ${product.sku}`);
+  let subtotal = 0;
+  const lineItems = input.items.map((item, idx) => {
+    const qty = Math.max(1, Number(item.qty ?? item.quantity) || 1);
+    let unitPrice = 0;
+    let title = item.title || `Item ${idx + 1}`;
+    let sku = item.sku || `SKU-${Date.now()}-${idx + 1}`;
+    let productId: Types.ObjectId | undefined = undefined;
+    let weightLbs = item.weightLbs || 0;
+    const image = item.image || "";
+    const selectedOption = item.selectedOption || "";
+
+    if (item.productId && isValidObjectId(item.productId) && productMap.has(item.productId)) {
+      const p = productMap.get(item.productId)!;
+      unitPrice = p.price;
+      title = p.title;
+      sku = p.sku;
+      productId = p._id;
+      weightLbs = p.weightLbs || 0;
+    } else {
+      unitPrice = typeof item.price === "number" ? item.price : Number(item.unitPrice) || 0;
     }
-    const unitPrice = product.price;
-    const lineTotal = unitPrice * item.qty;
+
+    const lineTotal = unitPrice * qty;
     subtotal += lineTotal;
     return {
-      productId: product._id,
-      sku: product.sku,
-      title: product.title,
-      qty: item.qty,
+      productId,
+      sku,
+      title,
+      qty,
       unitPrice,
       lineTotal,
-      weightLbs: product.weightLbs,
+      weightLbs,
+      image,
+      selectedOption,
     };
   });
 
@@ -108,14 +154,17 @@ export async function createOrder(input: CheckoutInput) {
 
   try {
     for (const item of input.items) {
-      const result = await Product.updateOne(
-        { _id: item.productId, status: "published", stock: { $gte: item.qty } },
-        { $inc: { stock: -item.qty } },
-      );
-      if (result.modifiedCount === 0) {
-        throw new AppError(400, `Insufficient stock for ${productMap.get(item.productId)?.sku ?? item.productId}`);
+      if (item.productId && isValidObjectId(item.productId) && productMap.has(item.productId)) {
+        const qty = Math.max(1, Number(item.qty ?? item.quantity) || 1);
+        const result = await Product.updateOne(
+          { _id: item.productId, status: "published", stock: { $gte: qty } },
+          { $inc: { stock: -qty } },
+        );
+        if (result.modifiedCount === 0) {
+          throw new AppError(400, `Insufficient stock for ${productMap.get(item.productId)?.sku ?? item.productId}`);
+        }
+        decremented.set(item.productId, (decremented.get(item.productId) ?? 0) + qty);
       }
-      decremented.set(item.productId, (decremented.get(item.productId) ?? 0) + item.qty);
     }
 
     const expectedAmountInCents = Math.round(total * 100);
@@ -133,7 +182,6 @@ export async function createOrder(input: CheckoutInput) {
         } else if (intent && intent.status === "requires_capture" && isAmountValid) {
           paymentStatus = "authorized";
         } else {
-          // Unconfirmed, underpaid, or failed PaymentIntent must never be marked as paid
           paymentStatus = "pending";
         }
       } else {
@@ -142,9 +190,9 @@ export async function createOrder(input: CheckoutInput) {
     }
 
     const order = await Order.create({
-      orderNumber: await nextOrderNumber(),
+      orderNumber: await nextOrderNumber(storeType),
       customerId: input.customerId && isValidObjectId(input.customerId) ? input.customerId : undefined,
-      email: input.email,
+      email,
       paymentMethod: input.paymentMethod,
       paymentStatus,
       paymentIntentId: input.paymentIntentId ?? "",
@@ -155,23 +203,29 @@ export async function createOrder(input: CheckoutInput) {
       shippingCost,
       tax,
       total,
-      billingAddress: input.billingAddress,
-      shippingAddress: input.shippingAddress,
+      billingAddress: input.billingAddress || {},
+      shippingAddress: input.shippingAddress || {},
       items: lineItems,
+      store: storeType,
+      type: storeType,
+      tiktokUsername: (input.tiktokUsername || "").replace("@", ""),
+      channel: input.channel || (storeType === "luckygirl" ? "TikTok Live" : "web"),
     });
 
     if (input.createAccount && input.password && !order.customerId) {
       try {
-        const existing = await Customer.findOne({ email: input.email.toLowerCase() });
+        const existing = await Customer.findOne({ email });
         if (!existing) {
           const bcryptModule = await import("bcryptjs");
           const bcryptLib = (bcryptModule as any).default || bcryptModule;
           const passwordHash = await bcryptLib.hash(input.password, 10);
           const fullName = `${(input.billingAddress as Record<string, string>)?.firstName ?? ""} ${(input.billingAddress as Record<string, string>)?.lastName ?? ""}`.trim();
           const newCust = await Customer.create({
-            email: input.email.toLowerCase(),
+            email,
             passwordHash,
             fullName,
+            store: storeType,
+            type: storeType,
           });
           order.customerId = newCust._id;
           await order.save();
@@ -192,11 +246,41 @@ export async function createOrder(input: CheckoutInput) {
   }
 }
 
-export async function listOrders(query: { page?: number; limit?: number; status?: OrderStatus }) {
+export async function listOrders(query: {
+  page?: number;
+  limit?: number;
+  status?: OrderStatus;
+  store?: string;
+  type?: string;
+  q?: string;
+}) {
   const page = Math.max(1, query.page ?? 1);
   const limit = Math.min(100, query.limit ?? 20);
   const skip = (page - 1) * limit;
-  const filter = query.status ? { status: query.status } : {};
+
+  const andClauses: Record<string, unknown>[] = [];
+  if (query.status) andClauses.push({ status: query.status });
+
+  const target = query.type || query.store;
+  if (target && target !== "all") {
+    const norm = normalizeStoreType(target);
+    andClauses.push({
+      $or: [{ store: norm }, { type: norm }, { store: target }, { type: target }],
+    });
+  }
+
+  if (query.q) {
+    const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    andClauses.push({
+      $or: [
+        { orderNumber: { $regex: escaped, $options: "i" } },
+        { customerEmail: { $regex: escaped, $options: "i" } },
+        { "shippingAddress.name": { $regex: escaped, $options: "i" } },
+      ],
+    });
+  }
+
+  const filter = andClauses.length > 1 ? { $and: andClauses } : andClauses[0] || {};
 
   const [docs, total] = await Promise.all([
     Order.find(filter).sort({ placedAt: -1 }).skip(skip).limit(limit),
@@ -263,16 +347,28 @@ export async function addShipment(
   return mapDoc(doc);
 }
 
-export async function listQuotes() {
-  const docs = await Quote.find().sort({ createdAt: -1 });
+export async function listQuotes(filterParam?: { store?: string; type?: string }) {
+  const filter: Record<string, unknown> = {};
+  const target = filterParam?.type || filterParam?.store;
+  if (target && target !== "all") {
+    const norm = normalizeStoreType(target);
+    filter.$or = [{ store: norm }, { type: norm }, { store: target }, { type: target }];
+  }
+  const docs = await Quote.find(filter).sort({ createdAt: -1 });
   return docs.map((d) => mapDoc(d));
 }
 
-export async function listQuotesPaginated(query: PaginationQuery) {
+export async function listQuotesPaginated(query: PaginationQuery & { store?: string; type?: string }) {
   const { page, limit, skip } = paginate(query);
+  const filter: Record<string, unknown> = {};
+  const target = query.type || query.store;
+  if (target && target !== "all") {
+    const norm = normalizeStoreType(target);
+    filter.$or = [{ store: norm }, { type: norm }, { store: target }, { type: target }];
+  }
   const [docs, total] = await Promise.all([
-    Quote.find().sort({ createdAt: -1 }).skip(skip).limit(limit),
-    Quote.countDocuments(),
+    Quote.find(filter).sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Quote.countDocuments(filter),
   ]);
   return {
     items: docs.map((d) => mapDoc(d)),
@@ -295,8 +391,14 @@ export async function updateQuoteStatus(id: string, status: QuoteStatus) {
   return mapDoc(doc);
 }
 
-export async function listCustomers() {
-  const docs = await Customer.find().select("-passwordHash").sort({ createdAt: -1 });
+export async function listCustomers(filterParam?: { store?: string; type?: string }) {
+  const filter: Record<string, unknown> = {};
+  const target = filterParam?.type || filterParam?.store;
+  if (target && target !== "all") {
+    const norm = normalizeStoreType(target);
+    filter.$or = [{ store: norm }, { type: norm }, { store: target }, { type: target }];
+  }
+  const docs = await Customer.find(filter).select("-passwordHash").sort({ createdAt: -1 });
   const withCounts = await Promise.all(
     docs.map(async (c) => {
       const orders = await Order.countDocuments({ customerId: c._id });
@@ -306,11 +408,17 @@ export async function listCustomers() {
   return withCounts;
 }
 
-export async function listCustomersPaginated(query: PaginationQuery) {
+export async function listCustomersPaginated(query: PaginationQuery & { store?: string; type?: string }) {
   const { page, limit, skip } = paginate(query);
+  const filter: Record<string, unknown> = {};
+  const target = query.type || query.store;
+  if (target && target !== "all") {
+    const norm = normalizeStoreType(target);
+    filter.$or = [{ store: norm }, { type: norm }, { store: target }, { type: target }];
+  }
   const [docs, total] = await Promise.all([
-    Customer.find().select("-passwordHash").sort({ createdAt: -1 }).skip(skip).limit(limit),
-    Customer.countDocuments(),
+    Customer.find(filter).select("-passwordHash").sort({ createdAt: -1 }).skip(skip).limit(limit),
+    Customer.countDocuments(filter),
   ]);
   const withCounts = await Promise.all(
     docs.map(async (c) => {
@@ -334,16 +442,32 @@ export async function updateCustomerTaxExempt(id: string, taxExempt: TaxExemptSt
   return mapDoc(doc);
 }
 
-export async function getDashboardStats() {
+export async function getDashboardStats(store?: string, type?: string) {
+  const target = type || store;
+  let storeFilter: Record<string, unknown> = {};
+  if (target && target !== "all") {
+    const norm = normalizeStoreType(target);
+    storeFilter = { $or: [{ store: norm }, { type: norm }, { store: target }, { type: target }] };
+  }
+
+  const productFilter: Record<string, unknown> = { ...storeFilter };
+  const orderFilter: Record<string, unknown> = { ...storeFilter };
+  const quoteFilter: Record<string, unknown> = {
+    status: "new",
+    ...storeFilter,
+  };
+
   const [productCount, orderCount, newQuotes, processingOrders] = await Promise.all([
-    Product.countDocuments(),
-    Order.countDocuments(),
-    Quote.countDocuments({ status: "new" }),
-    Order.countDocuments({ status: "processing" }),
+    Product.countDocuments(productFilter),
+    Order.countDocuments(orderFilter),
+    Quote.countDocuments(quoteFilter),
+    Order.countDocuments({ ...orderFilter, status: "processing" }),
   ]);
 
+  const paidMatch: Record<string, unknown> = { paymentStatus: "paid", ...storeFilter };
+
   const paid = await Order.aggregate([
-    { $match: { paymentStatus: "paid" } },
+    { $match: paidMatch },
     { $group: { _id: null, revenue: { $sum: "$total" } } },
   ]);
 
@@ -353,5 +477,7 @@ export async function getDashboardStats() {
     newQuotes,
     processingOrders,
     revenue: paid[0]?.revenue ?? 0,
+    store: target || "all",
+    type: target || "all",
   };
 }

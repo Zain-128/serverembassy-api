@@ -21,7 +21,11 @@ router.post(
     try {
       const { amount, currency, metadata } = req.body;
       const amountInCents = Math.round(amount * 100);
-      const result = await stripeService.createPaymentIntent(amountInCents, currency, metadata);
+      const store = (req.headers["x-store-origin"] as string) || metadata?.store || "serverembassy";
+      const result = await stripeService.createPaymentIntent(amountInCents, currency, {
+        store,
+        ...metadata,
+      });
       res.json(result);
     } catch (e) {
       next(e);
@@ -49,13 +53,24 @@ router.post(
       couponCode: z.string().optional(),
       createAccount: z.boolean().optional(),
       password: z.string().optional(),
-      billingAddress: z.record(z.unknown()).default({}),
-      shippingAddress: z.record(z.unknown()).default({}),
+      store: z.string().optional(),
+      type: z.string().optional(),
+      tiktokUsername: z.string().optional(),
+      channel: z.string().optional(),
+      billingAddress: z.record(z.unknown()).optional().default({}),
+      shippingAddress: z.record(z.unknown()).optional().default({}),
       items: z
         .array(
           z.object({
-            productId: z.string().min(1, "Product ID required"),
-            qty: z.number().int().positive("Quantity must be positive"),
+            productId: z.string().optional(),
+            sku: z.string().optional(),
+            title: z.string().optional(),
+            price: z.number().optional(),
+            unitPrice: z.number().optional(),
+            qty: z.number().int().positive().optional(),
+            quantity: z.number().int().positive().optional(),
+            image: z.string().optional(),
+            selectedOption: z.string().optional(),
           }),
         )
         .min(1, "Cart cannot be empty"),
@@ -63,7 +78,13 @@ router.post(
   ),
   async (req, res, next) => {
     try {
-      const order = await orderService.createOrder(req.body);
+      const storeOrigin =
+        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
+      const order = await orderService.createOrder({
+        ...req.body,
+        store: storeOrigin,
+        type: storeOrigin,
+      });
       res.status(201).json(order);
     } catch (e) {
       next(e);
@@ -83,11 +104,19 @@ router.post(
       quantity: z.number().int().positive().optional(),
       targetPrice: z.number().positive().optional(),
       message: z.string().optional(),
+      store: z.string().optional(),
+      type: z.string().optional(),
     }),
   ),
   async (req, res, next) => {
     try {
-      const quote = await orderService.createQuote(req.body);
+      const storeOrigin =
+        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
+      const quote = await orderService.createQuote({
+        ...req.body,
+        store: storeOrigin,
+        type: storeOrigin,
+      });
       res.status(201).json(quote);
     } catch (e) {
       next(e);
@@ -97,13 +126,15 @@ router.post(
 
 router.post(
   "/newsletter",
-  validateBody(z.object({ email: z.string().email() })),
+  validateBody(z.object({ email: z.string().email(), store: z.string().optional(), type: z.string().optional() })),
   async (req, res, next) => {
     try {
       const email = req.body.email.toLowerCase();
+      const store =
+        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
       const sub = await NewsletterSubscriber.findOneAndUpdate(
         { email },
-        { email, unsubscribedAt: null, subscribedAt: new Date() },
+        { email, store, type: store, unsubscribedAt: null, subscribedAt: new Date() },
         { upsert: true, new: true },
       );
       res.status(201).json(mapSubscriber(sub));
@@ -121,11 +152,19 @@ router.post(
       email: z.string().email(),
       subject: z.string().optional(),
       message: z.string().min(1),
+      store: z.string().optional(),
+      type: z.string().optional(),
     }),
   ),
   async (req, res, next) => {
     try {
-      const message = await contactService.createContactMessage(req.body);
+      const storeOrigin =
+        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
+      const message = await contactService.createContactMessage({
+        ...req.body,
+        store: storeOrigin,
+        type: storeOrigin,
+      });
       res.status(201).json(message);
     } catch (e) {
       next(e);

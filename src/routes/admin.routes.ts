@@ -20,9 +20,10 @@ const router = Router();
 
 router.use(requireAuth, requireStaff());
 
-router.get("/dashboard", async (_req, res, next) => {
+router.get("/dashboard", async (req, res, next) => {
   try {
-    res.json(await orderService.getDashboardStats());
+    const store = (req.query.type as string) || (req.query.store as string) || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || undefined;
+    res.json(await orderService.getDashboardStats(store));
   } catch (e) {
     next(e);
   }
@@ -54,6 +55,8 @@ const productBody = z.object({
   customLabel0: z.string().optional(),
   shipping: z.string().optional(),
   tax: z.string().optional(),
+  store: z.string().optional(),
+  type: z.string().optional(),
   images: z
     .array(
       z.object({
@@ -109,6 +112,8 @@ const adminListQuery = z.object({
   page: z.coerce.number().int().positive().optional(),
   limit: z.coerce.number().int().positive().optional(),
   q: z.string().optional(),
+  store: z.string().optional(),
+  type: z.string().optional(),
 });
 
 const productListQuery = adminListQuery.extend({
@@ -125,12 +130,15 @@ router.get(
   async (req, res, next) => {
     try {
       const q = req.query as z.infer<typeof productListQuery>;
+      const target = q.type || q.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || undefined;
       const result = await productService.listProducts(
         {
           page: q.page,
           limit: q.limit ?? 50,
           q: q.q,
           status: q.status,
+          store: target,
+          type: target,
         },
         false,
       );
@@ -156,8 +164,11 @@ router.post(
   async (req, res, next) => {
     try {
       const { dealEndsAt, ...rest } = req.body;
+      const store = rest.type || rest.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
       const product = await productService.createProduct({
         ...rest,
+        store,
+        type: store,
         dealEndsAt: dealEndsAt ? new Date(dealEndsAt) : undefined,
       });
       res.status(201).json(product);
@@ -232,7 +243,8 @@ router.post(
   ),
   async (req, res, next) => {
     try {
-      res.json(await productService.bulkUpsertProducts(req.body.rows));
+      const store = (req.query.type as string) || (req.query.store as string) || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || undefined;
+      res.json(await productService.bulkUpsertProducts(req.body.rows, store, store));
     } catch (e) {
       next(e);
     }
@@ -326,11 +338,15 @@ router.get(
   async (req, res, next) => {
     try {
       const q = req.query as z.infer<typeof orderListQuery>;
+      const target = q.type || q.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || undefined;
       res.json(
         await orderService.listOrders({
           page: q.page,
           limit: q.limit ?? 20,
+          q: q.q,
           ...(q.status ? { status: q.status } : {}),
+          store: target,
+          type: target,
         }),
       );
     } catch (e) {
@@ -373,9 +389,16 @@ router.post(
   },
 );
 
-router.get("/quotes", async (_req, res, next) => {
+router.get("/quotes", async (req, res, next) => {
   try {
-    res.json(await orderService.listQuotes());
+    const store = (req.query.type as string) || (req.query.store as string) || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || undefined;
+    const page = req.query.page ? Number(req.query.page) : undefined;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    if (page != null || limit != null) {
+      res.json(await orderService.listQuotesPaginated({ page, limit, store, type: store }));
+    } else {
+      res.json(await orderService.listQuotes({ ...(store ? { store, type: store } : {}) }));
+    }
   } catch (e) {
     next(e);
   }
@@ -394,9 +417,16 @@ router.patch(
   },
 );
 
-router.get("/customers", async (_req, res, next) => {
+router.get("/customers", async (req, res, next) => {
   try {
-    res.json(await orderService.listCustomers());
+    const store = (req.query.type as string) || (req.query.store as string) || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || undefined;
+    const page = req.query.page ? Number(req.query.page) : undefined;
+    const limit = req.query.limit ? Number(req.query.limit) : undefined;
+    if (page != null || limit != null) {
+      res.json(await orderService.listCustomersPaginated({ page, limit, store, type: store }));
+    } else {
+      res.json(await orderService.listCustomers(store ? { store, type: store } : undefined));
+    }
   } catch (e) {
     next(e);
   }
@@ -656,9 +686,10 @@ router.delete(
   },
 );
 
-router.get("/messages", async (_req, res, next) => {
+router.get("/messages", async (req, res, next) => {
   try {
-    res.json(await contactService.listContactMessages());
+    const store = (req.query.type as string) || (req.query.store as string) || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || undefined;
+    res.json(await contactService.listContactMessages({ ...(store ? { store, type: store } : {}) }));
   } catch (e) {
     next(e);
   }

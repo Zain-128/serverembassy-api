@@ -52,6 +52,8 @@ export type ProductListQuery = {
   deal?: boolean;
   status?: PublishStatus;
   sort?: "price_asc" | "price_desc" | "newest" | "sku" | "rating";
+  store?: string;
+  type?: string;
 };
 
 async function getCategoryDescendantIds(categoryId: Types.ObjectId): Promise<Types.ObjectId[]> {
@@ -75,13 +77,38 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
     filter.status = query.status;
   }
 
+  const andClauses: Record<string, unknown>[] = [];
+
+  const target = query.type || query.store;
+  if (target && target !== "all") {
+    const norm = target.toLowerCase().trim();
+    if (norm === "serverembassy" || norm === "powerline") {
+      andClauses.push({
+        $or: [
+          { store: { $in: ["serverembassy", "powerline"] } },
+          { type: { $in: ["serverembassy", "powerline"] } },
+        ],
+      });
+    } else {
+      andClauses.push({
+        $or: [{ store: norm }, { type: norm }, { store: target }, { type: target }],
+      });
+    }
+  }
+
   if (query.q) {
     const escaped = query.q.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    filter.$or = [
-      { title: { $regex: escaped, $options: "i" } },
-      { sku: { $regex: escaped, $options: "i" } },
-      { description: { $regex: escaped, $options: "i" } },
-    ];
+    andClauses.push({
+      $or: [
+        { title: { $regex: escaped, $options: "i" } },
+        { sku: { $regex: escaped, $options: "i" } },
+        { description: { $regex: escaped, $options: "i" } },
+      ],
+    });
+  }
+
+  if (andClauses.length > 0) {
+    filter.$and = andClauses;
   }
 
   if (query.categorySlug) {
@@ -273,12 +300,13 @@ async function ensureCategoryByPath(
   return parentId;
 }
 
-export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
+export async function bulkUpsertProducts(rows: ProductFeedRow[], storeParam?: string, typeParam?: string) {
   let created = 0;
   let updated = 0;
   const brandCache = new Map<string, Types.ObjectId>();
   const categoryCache = new Map<string, Types.ObjectId>();
   const errors: Array<{ sku: string; error: string }> = [];
+  const store = typeParam || storeParam || "serverembassy";
 
   for (const row of rows) {
     try {
@@ -341,6 +369,8 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[]) {
         images,
         status: availability === "out of stock" ? "draft" : "published",
         isDeal: onSale,
+        store,
+        type: store,
       };
 
       const existing = await Product.findOne({ sku });

@@ -23,6 +23,8 @@ const listQuerySchema = z.object({
   featured: z.coerce.boolean().optional(),
   deal: z.coerce.boolean().optional(),
   sort: z.enum(["price_asc", "price_desc", "newest", "sku", "rating"]).optional(),
+  store: z.string().optional(),
+  type: z.string().optional(),
 });
 
 router.get(
@@ -31,6 +33,7 @@ router.get(
   async (req, res, next) => {
     try {
       const q = req.query as z.infer<typeof listQuerySchema>;
+      const target = q.type || q.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || undefined;
       const result = await productService.listProducts(
         {
           page: q.page,
@@ -44,6 +47,8 @@ router.get(
           featured: q.featured,
           deal: q.deal,
           sort: q.sort,
+          store: target,
+          type: target,
         },
         true,
       );
@@ -75,17 +80,19 @@ router.get("/products/:slug", async (req, res, next) => {
   }
 });
 
-router.get("/categories", async (_req, res, next) => {
+router.get("/categories", async (req, res, next) => {
   try {
-    res.json(await catalogService.getCategoryTree());
+    const origin = (req.headers["x-store-origin"] as string) || (req.headers["x-store-type"] as string);
+    res.json(await catalogService.getCategoryTree(origin));
   } catch (e) {
     next(e);
   }
 });
 
-router.get("/categories/homepage", async (_req, res, next) => {
+router.get("/categories/homepage", async (req, res, next) => {
   try {
-    res.json(await catalogService.listCategories(true));
+    const origin = (req.headers["x-store-origin"] as string) || (req.headers["x-store-type"] as string);
+    res.json(await catalogService.listCategories(true, origin));
   } catch (e) {
     next(e);
   }
@@ -99,9 +106,10 @@ router.get("/categories/:slug", async (req, res, next) => {
   }
 });
 
-router.get("/brands", async (_req, res, next) => {
+router.get("/brands", async (req, res, next) => {
   try {
-    res.json(await catalogService.listBrands(false));
+    const origin = (req.headers["x-store-origin"] as string) || (req.headers["x-store-type"] as string);
+    res.json(await catalogService.listBrands(false, origin));
   } catch (e) {
     next(e);
   }
