@@ -55,6 +55,7 @@ export function createApp() {
   app.use("/api/auth", authRoutes);
   app.use("/api/store", storeRoutes);
   app.use("/api", checkoutRoutes);
+  app.use("/api/checkout", checkoutRoutes);
   app.use("/api/admin", adminRoutes);
 
   app.use(notFound);
