@@ -183,17 +183,18 @@ router.post(
   },
 );
 
-router.get("/orders/verify-signed", async (req, res, next) => {
+router.get(["/orders/verify-signed", "/orders/:orderNumber/receipt"], async (req, res, next) => {
   try {
     const fullOriginalUrl = req.originalUrl;
     const verification = verifySignedUrl(fullOriginalUrl);
     if (!verification.valid) {
       return res.status(403).json({ error: verification.error || "Forbidden: Invalid or expired signed URL" });
     }
-    const orderNumber = verification.params?.orderNumber;
-    if (!orderNumber) {
+    const rawOrderNum = verification.params?.orderNumber || req.params.orderNumber;
+    if (!rawOrderNum) {
       return res.status(400).json({ error: "Missing orderNumber in signed parameters" });
     }
+    const orderNumber = Array.isArray(rawOrderNum) ? rawOrderNum[0] : String(rawOrderNum);
     const order = await orderService.getOrderByOrderNumber(orderNumber);
     if (!order) {
       return res.status(404).json({ error: "Order not found" });
