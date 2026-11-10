@@ -5,6 +5,7 @@ import * as orderService from "../services/order.service.js";
 import * as contactService from "../services/contact.service.js";
 import * as stripeService from "../services/stripe.service.js";
 import { validateBody } from "../middleware/validate.js";
+import { generateSignedUrl, verifySignedUrl } from "../lib/signedUrl.js";
 
 const router = Router();
 
@@ -85,7 +86,12 @@ router.post(
         store: storeOrigin,
         type: storeOrigin,
       });
-      res.status(201).json(order);
+      const orderNumber = (order as any).orderNumber || (order as any).id;
+      const signedTrackingUrl = generateSignedUrl(`/api/orders/${orderNumber}/receipt`, {
+        expiresInSeconds: 86400 * 7, // 7 days valid
+        extraParams: { orderNumber, store: storeOrigin },
+      });
+      res.status(201).json({ ...order, signedTrackingUrl });
     } catch (e) {
       next(e);
     }
@@ -117,7 +123,12 @@ router.post(
         store: storeOrigin,
         type: storeOrigin,
       });
-      res.status(201).json(quote);
+      const quoteId = (quote as any).id || (quote as any)._id || "quote";
+      const signedQuoteUrl = generateSignedUrl(`/api/quotes/${quoteId}/view`, {
+        expiresInSeconds: 86400 * 14, // 14 days valid
+        extraParams: { quoteId: String(quoteId), email: req.body.email },
+      });
+      res.status(201).json({ ...quote, signedQuoteUrl });
     } catch (e) {
       next(e);
     }
@@ -169,6 +180,43 @@ router.post(
     } catch (e) {
       next(e);
     }
+  },
+);
+
+router.get("/orders/verify-signed", async (req, res, next) => {
+  try {
+    const fullOriginalUrl = req.originalUrl;
+    const verification = verifySignedUrl(fullOriginalUrl);
+    if (!verification.valid) {
+      return res.status(403).json({ error: verification.error || "Forbidden: Invalid or expired signed URL" });
+    }
+    const orderNumber = verification.params?.orderNumber;
+    if (!orderNumber) {
+      return res.status(400).json({ error: "Missing orderNumber in signed parameters" });
+    }
+    const order = await orderService.getOrderByOrderNumber(orderNumber);
+    if (!order) {
+      return res.status(404).json({ error: "Order not found" });
+    }
+    res.json({ verified: true, order });
+  } catch (e) {
+    next(e);
+  }
+});
+
+router.post(
+  "/signed-urls/generate",
+  validateBody(
+    z.object({
+      path: z.string().min(1),
+      expiresInSeconds: z.number().int().positive().optional(),
+      extraParams: z.record(z.any()).optional(),
+    }),
+  ),
+  (req, res) => {
+    const { path, expiresInSeconds, extraParams } = req.body;
+    const signedUrl = generateSignedUrl(path, { expiresInSeconds, extraParams });
+    res.json({ success: true, signedUrl });
   },
 );
 

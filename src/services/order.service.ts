@@ -303,6 +303,13 @@ export async function getOrder(id: string) {
   return mapDoc(doc);
 }
 
+export async function getOrderByOrderNumber(orderNumber: string) {
+  const cleanNum = orderNumber.trim();
+  const doc = await Order.findOne({ orderNumber: cleanNum });
+  if (!doc) return null;
+  return mapDoc(doc);
+}
+
 export async function listCustomerOrders(customerId: string, query: { page?: number; limit?: number }) {
   const page = Math.max(1, query.page ?? 1);
   const limit = Math.min(100, query.limit ?? 20);
