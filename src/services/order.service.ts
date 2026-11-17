@@ -137,6 +137,45 @@ export async function createOrder(input: CheckoutInput) {
   const productById = new Map(products.map((p) => [String(p._id), p]));
   const productBySku = new Map(products.map((p) => [p.sku.toLowerCase(), p]));
 
+  // STRICT MULTI-TENANT & PAYMENT METHOD ENFORCEMENT:
+  // Detect store types of all items in the cart directly from verified database records
+  const hasHardwareItem = products.some((p) => p.store !== "luckygirl" && p.type !== "luckygirl");
+  const hasLuckyGirlItem = products.some((p) => p.store === "luckygirl" || p.type === "luckygirl");
+
+  // Prevent cross-business cart mixing
+  if (hasHardwareItem && hasLuckyGirlItem) {
+    throw new AppError(400, "Orders cannot combine consumer cosmetics with enterprise IT hardware.");
+  }
+
+  // Prevent Lucky Girl checkout loophole on hardware items
+  if (hasHardwareItem && storeType === "luckygirl") {
+    throw new AppError(
+      400,
+      "Enterprise hardware products cannot be ordered under Lucky Girl channels or settings.",
+    );
+  }
+
+  // Hardware items NEVER allow Cash on Delivery, PayPal, or Net Terms under any circumstances
+  if (hasHardwareItem) {
+    if (input.paymentMethod === "cod") {
+      throw new AppError(
+        400,
+        "Cash on Delivery is not available for Power Line enterprise hardware orders. Please select Card / ACH or Wire Transfer.",
+      );
+    }
+    if (input.paymentMethod === "paypal" || input.paymentMethod === "net_terms") {
+      throw new AppError(
+        400,
+        `${input.paymentMethod} is not accepted for enterprise hardware orders. Please select Credit Card / ACH or Wire Transfer.`,
+      );
+    }
+  }
+
+  // If order is placed for Power Line, reject any Lucky Girl items
+  if (storeType !== "luckygirl" && hasLuckyGirlItem) {
+    throw new AppError(400, "Selected items are not available on Power Line Devices.");
+  }
+
   let subtotal = 0;
   const lineItems = input.items.map((item, idx) => {
     let p: any = null;
