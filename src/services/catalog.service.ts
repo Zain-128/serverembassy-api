@@ -17,7 +17,7 @@ export async function listCategories(publicOnly = false, storeOrigin?: string) {
   const filter: Record<string, unknown> = publicOnly ? { showOnHomepage: true } : {};
   if (storeOrigin === "luckygirl") {
     filter.slug = { $regex: /lucky/i };
-  } else if (storeOrigin === "serverembassy" || storeOrigin === "powerline") {
+  } else {
     filter.slug = { $not: { $regex: /lucky/i } };
   }
   const docs = await Category.find(filter).sort({ sortOrder: 1, name: 1 });
@@ -46,7 +46,7 @@ export async function getCategoryTree(storeOrigin?: string) {
   let query: Record<string, unknown> = {};
   if (storeOrigin === "luckygirl") {
     query = { slug: { $regex: /lucky/i } };
-  } else if (storeOrigin === "serverembassy" || storeOrigin === "powerline") {
+  } else {
     query = { slug: { $not: { $regex: /lucky/i } } };
   }
   const categories = await Category.find(query).sort({ sortOrder: 1, name: 1 }).lean();
@@ -100,7 +100,7 @@ export async function listBrands(featuredOnly = false, storeOrigin?: string) {
   const filter: Record<string, unknown> = featuredOnly ? { featured: true } : {};
   if (storeOrigin === "luckygirl") {
     filter.slug = { $regex: /lucky/i };
-  } else if (storeOrigin === "serverembassy" || storeOrigin === "powerline") {
+  } else {
     filter.slug = { $not: { $regex: /lucky/i } };
   }
   const docs = await Brand.find(filter).sort({ sortOrder: 1, name: 1 });

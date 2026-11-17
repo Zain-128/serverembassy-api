@@ -12,7 +12,7 @@ export type ContactMessageInput = {
 };
 
 export async function createContactMessage(input: ContactMessageInput) {
-  const storeType = input.type || input.store || "serverembassy";
+  const storeType = input.type || input.store || "powerline";
   const doc = await ContactMessage.create({
     ...input,
     store: storeType,

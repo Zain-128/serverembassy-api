@@ -22,7 +22,7 @@ router.post(
     try {
       const { amount, currency, metadata } = req.body;
       const amountInCents = Math.round(amount * 100);
-      const store = (req.headers["x-store-origin"] as string) || metadata?.store || "serverembassy";
+      const store = (req.headers["x-store-origin"] as string) || metadata?.store || "powerline";
       const result = await stripeService.createPaymentIntent(amountInCents, currency, {
         store,
         ...metadata,
@@ -123,7 +123,7 @@ router.post(
   async (req, res, next) => {
     try {
       const storeOrigin =
-        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
+        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "powerline";
       const quote = await orderService.createQuote({
         ...req.body,
         store: storeOrigin,
@@ -148,7 +148,7 @@ router.post(
     try {
       const email = req.body.email.toLowerCase();
       const store =
-        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
+        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "powerline";
       const sub = await NewsletterSubscriber.findOneAndUpdate(
         { email },
         { email, store, type: store, unsubscribedAt: null, subscribedAt: new Date() },
@@ -176,7 +176,7 @@ router.post(
   async (req, res, next) => {
     try {
       const storeOrigin =
-        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
+        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "powerline";
       const message = await contactService.createContactMessage({
         ...req.body,
         store: storeOrigin,
@@ -218,7 +218,8 @@ router.post("/stripe/webhook", express.raw({ type: "application/json" }), async 
     return res.status(400).json({ error: "Missing stripe-signature or STRIPE_WEBHOOK_SECRET" });
   }
   try {
-    const event = stripeService.constructWebhookEvent(req.body, sig as string, webhookSecret);
+    const rawPayload = (req as any).rawBody || req.body;
+    const event = stripeService.constructWebhookEvent(rawPayload, sig as string, webhookSecret);
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as any;
       await Order.updateOne({ paymentIntentId: pi.id }, { $set: { paymentStatus: "paid" } });

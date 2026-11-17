@@ -18,7 +18,7 @@ import * as stripeService from "./stripe.service.js";
 const ORDER_NUMBER_BASE = 1000;
 
 export function normalizeStoreType(val?: string): string {
-  if (!val) return "serverembassy";
+  if (!val) return "powerline";
   const lower = val.toLowerCase().trim();
   if (lower.includes("lucky") || lower.includes("scoop")) return "luckygirl";
   if (lower.includes("power")) return "powerline";
@@ -26,7 +26,7 @@ export function normalizeStoreType(val?: string): string {
   return lower;
 }
 
-async function nextOrderNumber(store = "serverembassy") {
+async function nextOrderNumber(store = "powerline") {
   const normStore = normalizeStoreType(store);
   const prefix = normStore === "luckygirl" ? "LGS" : normStore === "powerline" ? "PL" : "SE";
   const counterKey = `orderNumber_${prefix.toLowerCase()}`;
@@ -86,7 +86,7 @@ export async function createOrder(input: CheckoutInput) {
   const email = (input.email || input.customerEmail || "").toLowerCase().trim();
   if (!email) throw new AppError(400, "Email is required");
 
-  const rawStore = input.type || input.store || "serverembassy";
+  const rawStore = input.type || input.store || "powerline";
   const storeType = normalizeStoreType(rawStore);
 
   // Enforce payment methods for enterprise hardware

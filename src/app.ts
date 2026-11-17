@@ -56,7 +56,14 @@ export function createApp() {
       credentials: true,
     }),
   );
-  app.use(express.json({ limit: "2mb" }));
+  app.use(
+    express.json({
+      limit: "2mb",
+      verify: (req: any, _res, buf) => {
+        req.rawBody = buf;
+      },
+    }),
+  );
 
   app.use(
     rateLimit({
@@ -68,7 +75,7 @@ export function createApp() {
   );
 
   app.get("/health", (_req, res) => {
-    res.json({ ok: true, service: "serverembassy-api" });
+    res.json({ ok: true, service: "powerline-api" });
   });
 
   app.use("/api/auth", authRoutes);

@@ -108,7 +108,12 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
   }
 
   if (query.categorySlug) {
-    const cat = await Category.findOne({ slug: query.categorySlug });
+    let cat = await Category.findOne({ slug: query.categorySlug });
+    if (!cat && query.categorySlug.endsWith("s")) {
+      cat = await Category.findOne({ slug: query.categorySlug.replace(/s$/, "") });
+    } else if (!cat) {
+      cat = await Category.findOne({ slug: `${query.categorySlug}s` });
+    }
     if (!cat) return { items: [], total: 0, page, limit, totalPages: 0 };
     const ids = await getCategoryDescendantIds(cat._id as Types.ObjectId);
     filter.categoryId = { $in: [cat._id, ...ids] };
@@ -154,9 +159,15 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
   };
 }
 
-export async function getProductBySlug(slug: string, publicOnly = true) {
+export async function getProductBySlug(slug: string, publicOnly = true, store?: string) {
   const filter: Record<string, unknown> = { slug };
   if (publicOnly) filter.status = "published";
+  if (store && store.toLowerCase().trim() === "luckygirl") {
+    filter.$or = [{ store: "luckygirl" }, { type: "luckygirl" }];
+  } else {
+    filter.store = { $ne: "luckygirl" };
+    filter.type = { $ne: "luckygirl" };
+  }
   const doc = await Product.findOne(filter).populate(productPopulate);
   if (!doc) throw new AppError(404, "Product not found");
   return mapProduct(doc);
@@ -302,7 +313,7 @@ export async function bulkUpsertProducts(rows: ProductFeedRow[], storeParam?: st
   const brandCache = new Map<string, Types.ObjectId>();
   const categoryCache = new Map<string, Types.ObjectId>();
   const errors: Array<{ sku: string; error: string }> = [];
-  const store = typeParam || storeParam || "serverembassy";
+  const store = typeParam || storeParam || "powerline";
 
   for (const row of rows) {
     try {

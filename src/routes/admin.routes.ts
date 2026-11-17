@@ -164,7 +164,7 @@ router.post(
   async (req, res, next) => {
     try {
       const { dealEndsAt, ...rest } = req.body;
-      const store = rest.type || rest.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
+      const store = rest.type || rest.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "powerline";
       const product = await productService.createProduct({
         ...rest,
         store,

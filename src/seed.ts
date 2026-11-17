@@ -15,7 +15,7 @@ import {
 async function main() {
   await connectDb();
 
-  const adminEmail = process.env.ADMIN_EMAIL ?? "admin@serverembassy.com";
+  const adminEmail = process.env.ADMIN_EMAIL ?? "admin@powerlinedevices.com";
   const adminPassword = process.env.ADMIN_PASSWORD ?? "admin123";
 
   await StoreSettings.findOneAndUpdate(

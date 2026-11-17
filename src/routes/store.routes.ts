@@ -73,7 +73,11 @@ router.get("/products/by-ids", validateQuery(z.object({ ids: z.string().optional
 
 router.get("/products/:slug", async (req, res, next) => {
   try {
-    const product = await productService.getProductBySlug(req.params.slug, true);
+    const origin =
+      (req.headers["x-store-origin"] as string) ||
+      (req.headers["x-store-type"] as string) ||
+      (req.query.store as string);
+    const product = await productService.getProductBySlug(req.params.slug, true, origin);
     res.json(product);
   } catch (e) {
     next(e);
