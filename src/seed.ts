@@ -252,6 +252,7 @@ In-stock orders are processed and prepared for dispatch within 1–2 business da
 Orders are shipped via major national carriers (including FedEx and UPS) or certified freight carriers for heavy rack-mount equipment.
 - Standard Ground Shipping: Typically delivers within 3–5 business days across the continental United States.
 - Free Shipping: Orders qualifying over $199 unlock complimentary standard ground shipping. For orders under $199, standard shipping is calculated at checkout.
+- Retail Promotions & Wholesale Notice: Free shipping, discounts and all other promotions apply solely to e-commerce and retail orders, not to bulk or wholesale orders, which are priced by quotation.
 - Freight Deliveries: Palletized or multi-node server orders require freight handling. Our logistics team will coordinate dispatch details upon order confirmation.
 
 ## Tracking & Order Status

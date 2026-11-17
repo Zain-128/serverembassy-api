@@ -1,6 +1,6 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import { z } from "zod";
-import { NewsletterSubscriber } from "../models/index.js";
+import { NewsletterSubscriber, Order } from "../models/index.js";
 import * as orderService from "../services/order.service.js";
 import * as contactService from "../services/contact.service.js";
 import * as stripeService from "../services/stripe.service.js";
@@ -80,7 +80,13 @@ router.post(
   async (req, res, next) => {
     try {
       const storeOrigin =
-        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "serverembassy";
+        req.body.type || req.body.store || (req.headers["x-store-type"] as string) || (req.headers["x-store-origin"] as string) || "powerline";
+      if (req.body.paymentMethod === "cod" && storeOrigin !== "luckygirl") {
+        return res.status(400).json({ error: "Cash on Delivery is not available for Power Line enterprise hardware orders. Please select Card / ACH or Wire Transfer." });
+      }
+      if ((req.body.paymentMethod === "paypal" || req.body.paymentMethod === "net_terms") && storeOrigin !== "luckygirl") {
+        return res.status(400).json({ error: `${req.body.paymentMethod} is not currently supported. Please select Credit Card / ACH or Wire Transfer.` });
+      }
       const order = await orderService.createOrder({
         ...req.body,
         store: storeOrigin,
@@ -205,21 +211,26 @@ router.get(["/orders/verify-signed", "/orders/:orderNumber/receipt"], async (req
   }
 });
 
-router.post(
-  "/signed-urls/generate",
-  validateBody(
-    z.object({
-      path: z.string().min(1),
-      expiresInSeconds: z.number().int().positive().optional(),
-      extraParams: z.record(z.any()).optional(),
-    }),
-  ),
-  (req, res) => {
-    const { path, expiresInSeconds, extraParams } = req.body;
-    const signedUrl = generateSignedUrl(path, { expiresInSeconds, extraParams });
-    res.json({ success: true, signedUrl });
-  },
-);
+router.post("/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
+  const sig = req.headers["stripe-signature"];
+  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+  if (!sig || !webhookSecret) {
+    return res.status(400).json({ error: "Missing stripe-signature or STRIPE_WEBHOOK_SECRET" });
+  }
+  try {
+    const event = stripeService.constructWebhookEvent(req.body, sig as string, webhookSecret);
+    if (event.type === "payment_intent.succeeded") {
+      const pi = event.data.object as any;
+      await Order.updateOne({ paymentIntentId: pi.id }, { $set: { paymentStatus: "paid" } });
+    } else if (event.type === "payment_intent.payment_failed") {
+      const pi = event.data.object as any;
+      await Order.updateOne({ paymentIntentId: pi.id }, { $set: { paymentStatus: "failed" } });
+    }
+    res.json({ received: true });
+  } catch (err: any) {
+    res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+  }
+});
 
 function mapSubscriber(doc: { _id: unknown; email: string }) {
   return { id: String(doc._id), email: doc.email };

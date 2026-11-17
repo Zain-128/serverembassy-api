@@ -80,20 +80,16 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
   const andClauses: Record<string, unknown>[] = [];
 
   const target = query.type || query.store;
-  if (target && target !== "all") {
-    const norm = target.toLowerCase().trim();
-    if (norm === "serverembassy" || norm === "powerline") {
-      andClauses.push({
-        $or: [
-          { store: { $in: ["serverembassy", "powerline"] } },
-          { type: { $in: ["serverembassy", "powerline"] } },
-        ],
-      });
-    } else {
-      andClauses.push({
-        $or: [{ store: norm }, { type: norm }, { store: target }, { type: target }],
-      });
-    }
+  if (target && target.toLowerCase().trim() === "luckygirl") {
+    andClauses.push({
+      $or: [{ store: "luckygirl" }, { type: "luckygirl" }],
+    });
+  } else {
+    // Power Line / Hardware store: strictly filter out any consumer Lucky Girl items
+    andClauses.push({
+      store: { $ne: "luckygirl" },
+      type: { $ne: "luckygirl" },
+    });
   }
 
   if (query.q) {

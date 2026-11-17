@@ -1,7 +1,8 @@
 import crypto from "crypto";
 import { env } from "../config/env.js";
 
-const DEFAULT_SECRET = process.env.SIGNED_URL_SECRET || env.JWT_SECRET || "serverembassy-secure-signed-url-secret-2026-key";
+const RUNTIME_FALLBACK_SECRET = crypto.randomBytes(32).toString("hex");
+const DEFAULT_SECRET = process.env.SIGNED_URL_SECRET || env.JWT_SECRET || RUNTIME_FALLBACK_SECRET;
 const DEFAULT_EXPIRATION_SECONDS = 3600; // 1 hour
 
 export interface SignUrlOptions {

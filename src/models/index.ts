@@ -49,12 +49,12 @@ const staffUserSchema = new Schema(
 const storeSettingsSchema = new Schema(
   {
     key: { type: String, default: "default", unique: true },
-    storeName: { type: String, default: "Server Embassy" },
+    storeName: { type: String, default: "Power Line Devices" },
     tagline: { type: String, default: "Certified Enterprise Server & IT Hardware Solutions" },
-    phone: { type: String, default: "+1 (727) 214-2001" },
-    supportEmail: { type: String, default: "support@serverembassy.com" },
-    address: { type: String, default: "7901 4th St. N Ste 300, St. Petersburg, FL 33702" },
-    hours: { type: String, default: "Mon – Fri: 08:00 AM – 05:00 PM (GMT-4)" },
+    phone: { type: String, default: "(321) 788-5899" },
+    supportEmail: { type: String, default: "info@powerlinedevices.com" },
+    address: { type: String, default: "1317 Edgewater Dr Suite #6089, Orlando, FL 32804" },
+    hours: { type: String, default: "Mon – Fri: 09:00 AM – 06:00 PM EST" },
     freeShippingThreshold: { type: Number, default: 199 },
     freeShippingLabel: { type: String, default: "Free ground shipping on orders over $199" },
     taxRate: { type: Number, default: 0.07 },

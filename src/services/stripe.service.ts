@@ -9,7 +9,7 @@ function getStripe(): Stripe {
   if (!secret) {
     throw new AppError(
       400,
-      "Stripe payment is not configured on the server. Please set STRIPE_SECRET_KEY in .env, or use Cash on Delivery (COD).",
+      "Stripe payment is not configured on the server. Please set STRIPE_SECRET_KEY in .env, or select Wire / Bank Transfer at checkout.",
     );
   }
   if (!stripeClient) {
@@ -48,5 +48,25 @@ export async function retrievePaymentIntent(paymentIntentId: string): Promise<{ 
   } catch (err) {
     console.error("Failed to retrieve payment intent from Stripe:", err);
     return null;
+  }
+}
+
+export function constructWebhookEvent(
+  payload: string | Buffer,
+  signature: string,
+  endpointSecret: string
+): Stripe.Event {
+  const stripe = getStripe();
+  return stripe.webhooks.constructEvent(payload, signature, endpointSecret);
+}
+
+export async function refundPaymentIntent(paymentIntentId: string): Promise<boolean> {
+  try {
+    const stripe = getStripe();
+    await stripe.refunds.create({ payment_intent: paymentIntentId });
+    return true;
+  } catch (err) {
+    console.error("Failed to refund payment intent:", err);
+    return false;
   }
 }

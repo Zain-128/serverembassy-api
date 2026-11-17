@@ -149,7 +149,21 @@ export async function deleteBrand(id: string) {
 export async function getStoreSettings() {
   let doc = await StoreSettings.findOne({ key: "default" });
   if (!doc) {
-    doc = await StoreSettings.create({ key: "default" });
+    doc = await StoreSettings.create({
+      key: "default",
+      storeName: "Power Line Devices",
+      phone: "(321) 788-5899",
+      supportEmail: "info@powerlinedevices.com",
+      address: "1317 Edgewater Dr Suite #6089, Orlando, FL 32804",
+      hours: "Mon – Fri: 09:00 AM – 06:00 PM EST",
+    });
+  } else if (doc.storeName === "Server Embassy" || !doc.storeName) {
+    doc.storeName = "Power Line Devices";
+    doc.phone = "(321) 788-5899";
+    doc.supportEmail = "info@powerlinedevices.com";
+    doc.address = "1317 Edgewater Dr Suite #6089, Orlando, FL 32804";
+    doc.hours = "Mon – Fri: 09:00 AM – 06:00 PM EST";
+    await doc.save();
   }
   return mapDoc(doc);
 }

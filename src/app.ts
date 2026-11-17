@@ -21,17 +21,36 @@ export function createApp() {
     cors({
       origin: (origin, callback) => {
         if (!origin) return callback(null, true);
-        const isAllowed =
-          env.corsOrigins.includes("*") ||
-          env.corsOrigins.some((allowed) => allowed === origin || allowed === origin.replace(/\/$/, "")) ||
-          origin.endsWith("powerlinedevices.com") ||
-          origin.endsWith(".vercel.app") ||
-          origin.includes("localhost") ||
-          origin.includes("127.0.0.1");
+        const cleanOrigin = origin.replace(/\/$/, "").toLowerCase();
 
-        if (isAllowed) {
+        // Exact trusted origins for Power Line Devices and configured admin sites
+        const trustedOrigins = new Set([
+          "https://powerlinedevices.com",
+          "https://www.powerlinedevices.com",
+          ...env.corsOrigins.map((o) => o.replace(/\/$/, "").toLowerCase()),
+        ]);
+
+        if (trustedOrigins.has(cleanOrigin)) {
           return callback(null, true);
         }
+
+        // Development-only exact port allowances (never substring)
+        if (env.isDev) {
+          const devOrigins = new Set([
+            "http://localhost:3000",
+            "http://localhost:3001",
+            "http://localhost:3002",
+            "http://localhost:5173",
+            "http://localhost:5174",
+            "http://127.0.0.1:3000",
+            "http://127.0.0.1:3001",
+            "http://127.0.0.1:5173",
+          ]);
+          if (devOrigins.has(cleanOrigin)) {
+            return callback(null, true);
+          }
+        }
+
         return callback(new AppError(403, "Origin not allowed by CORS"));
       },
       credentials: true,

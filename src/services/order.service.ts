@@ -89,41 +89,80 @@ export async function createOrder(input: CheckoutInput) {
   const rawStore = input.type || input.store || "serverembassy";
   const storeType = normalizeStoreType(rawStore);
 
+  // Enforce payment methods for enterprise hardware
+  if (input.paymentMethod === "cod" && storeType !== "luckygirl") {
+    throw new AppError(
+      400,
+      "Cash on Delivery is not available for Power Line enterprise hardware orders. Please select Card / ACH or Wire Transfer.",
+    );
+  }
+  if ((input.paymentMethod === "paypal" || input.paymentMethod === "net_terms") && storeType !== "luckygirl") {
+    throw new AppError(
+      400,
+      `${input.paymentMethod} is not supported. Please select Credit Card / ACH or Wire Transfer.`,
+    );
+  }
+
+  // Prevent duplicate payment reuse across orders
+  if (input.paymentIntentId) {
+    const existingOrder = await Order.findOne({ paymentIntentId: input.paymentIntentId });
+    if (existingOrder) {
+      throw new AppError(
+        400,
+        "This payment transaction ID has already been applied to another order.",
+      );
+    }
+  }
+
   const settings = await StoreSettings.findOne({ key: "default" });
   const threshold = settings?.freeShippingThreshold ?? 199;
   const taxRate = settings?.taxRate ?? 0.07;
 
-  // Separate items into mongo-managed items vs direct items
-  const validMongoIds = input.items
+  // STRICT CATALOG INTEGRITY: Every item must be a real published catalog product
+  const mongoIds = input.items
     .map((i) => i.productId)
     .filter((id): id is string => Boolean(id && isValidObjectId(id)));
+  const skus = input.items
+    .map((i) => i.sku?.trim())
+    .filter((s): s is string => Boolean(s));
 
-  const products = validMongoIds.length
-    ? await Product.find({ _id: { $in: validMongoIds }, status: "published" })
+  const orConditions: Record<string, unknown>[] = [];
+  if (mongoIds.length) orConditions.push({ _id: { $in: mongoIds } });
+  if (skus.length) orConditions.push({ sku: { $in: skus } });
+
+  const products = orConditions.length
+    ? await Product.find({ status: "published", $or: orConditions })
     : [];
-  const productMap = new Map(products.map((p) => [String(p._id), p]));
+
+  const productById = new Map(products.map((p) => [String(p._id), p]));
+  const productBySku = new Map(products.map((p) => [p.sku.toLowerCase(), p]));
 
   let subtotal = 0;
   const lineItems = input.items.map((item, idx) => {
-    const qty = Math.max(1, Number(item.qty ?? item.quantity) || 1);
-    let unitPrice = 0;
-    let title = item.title || `Item ${idx + 1}`;
-    let sku = item.sku || `SKU-${Date.now()}-${idx + 1}`;
-    let productId: Types.ObjectId | undefined = undefined;
-    let weightLbs = item.weightLbs || 0;
-    const image = item.image || "";
-    const selectedOption = item.selectedOption || "";
-
-    if (item.productId && isValidObjectId(item.productId) && productMap.has(item.productId)) {
-      const p = productMap.get(item.productId)!;
-      unitPrice = p.price;
-      title = p.title;
-      sku = p.sku;
-      productId = p._id;
-      weightLbs = p.weightLbs || 0;
-    } else {
-      unitPrice = typeof item.price === "number" ? item.price : Number(item.unitPrice) || 0;
+    let p: any = null;
+    if (item.productId && isValidObjectId(item.productId)) {
+      p = productById.get(String(item.productId));
     }
+    if (!p && item.sku) {
+      p = productBySku.get(item.sku.trim().toLowerCase());
+    }
+
+    if (!p) {
+      throw new AppError(
+        400,
+        `Invalid catalog item: "${item.title || item.sku || `Item ${idx + 1}`}". Every item must be an authentic published catalog product.`,
+      );
+    }
+
+    const qty = Math.max(1, Number(item.qty ?? item.quantity) || 1);
+    // Ignore any browser-submitted price; ALWAYS take verified price from database
+    const unitPrice = p.price;
+    const title = p.title;
+    const sku = p.sku;
+    const productId = p._id;
+    const weightLbs = p.weightLbs || 0;
+    const image = p.images?.[0]?.url || item.image || "";
+    const selectedOption = item.selectedOption || "";
 
     const lineTotal = unitPrice * qty;
     subtotal += lineTotal;
@@ -154,16 +193,16 @@ export async function createOrder(input: CheckoutInput) {
 
   try {
     for (const item of input.items) {
-      if (item.productId && isValidObjectId(item.productId) && productMap.has(item.productId)) {
+      if (item.productId && isValidObjectId(item.productId) && productById.has(String(item.productId))) {
         const qty = Math.max(1, Number(item.qty ?? item.quantity) || 1);
         const result = await Product.updateOne(
           { _id: item.productId, status: "published", stock: { $gte: qty } },
           { $inc: { stock: -qty } },
         );
         if (result.modifiedCount === 0) {
-          throw new AppError(400, `Insufficient stock for ${productMap.get(item.productId)?.sku ?? item.productId}`);
+          throw new AppError(400, `Insufficient stock for ${productById.get(String(item.productId))?.sku ?? item.productId}`);
         }
-        decremented.set(item.productId, (decremented.get(item.productId) ?? 0) + qty);
+        decremented.set(String(item.productId), (decremented.get(String(item.productId)) ?? 0) + qty);
       }
     }
 
@@ -241,6 +280,13 @@ export async function createOrder(input: CheckoutInput) {
   } catch (e) {
     for (const [productId, qty] of Array.from(decremented.entries())) {
       await Product.updateOne({ _id: productId }, { $inc: { stock: qty } });
+    }
+    if (input.paymentIntentId && (input.paymentMethod === "stripe" || input.paymentMethod === "card")) {
+      try {
+        await stripeService.refundPaymentIntent(input.paymentIntentId);
+      } catch (refundErr) {
+        console.error("Auto-refund failed on order creation error:", refundErr);
+      }
     }
     throw e;
   }
