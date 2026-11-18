@@ -23,14 +23,20 @@ export function createApp() {
         if (!origin) return callback(null, true);
         const cleanOrigin = origin.replace(/\/$/, "").toLowerCase();
 
-        // Exact trusted origins for Power Line Devices and configured admin sites
+        // Exact trusted origins for Power Line Devices, Server Embassy, and configured admin sites
         const trustedOrigins = new Set([
           "https://powerlinedevices.com",
           "https://www.powerlinedevices.com",
+          "https://serverembassy.com",
+          "https://www.serverembassy.com",
           ...env.corsOrigins.map((o) => o.replace(/\/$/, "").toLowerCase()),
         ]);
 
-        if (trustedOrigins.has(cleanOrigin)) {
+        if (
+          trustedOrigins.has(cleanOrigin) ||
+          (cleanOrigin.endsWith(".vercel.app") &&
+            (cleanOrigin.includes("server-embassy") || cleanOrigin.includes("powerline")))
+        ) {
           return callback(null, true);
         }
 

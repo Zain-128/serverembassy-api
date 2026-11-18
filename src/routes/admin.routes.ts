@@ -445,9 +445,14 @@ router.patch(
   },
 );
 
-router.get("/settings", async (_req, res, next) => {
+router.get("/settings", async (req, res, next) => {
   try {
-    res.json(await catalogService.getStoreSettings());
+    const origin =
+      (req.headers["x-store-origin"] as string) ||
+      (req.headers.origin as string) ||
+      (req.headers.referer as string) ||
+      "";
+    res.json(await catalogService.getStoreSettings(origin));
   } catch (e) {
     next(e);
   }
@@ -459,7 +464,12 @@ router.patch(
   validateBody(settingsBody),
   async (req, res, next) => {
     try {
-      res.json(await catalogService.updateStoreSettings(req.body));
+      const origin =
+        (req.headers["x-store-origin"] as string) ||
+        (req.headers.origin as string) ||
+        (req.headers.referer as string) ||
+        "";
+      res.json(await catalogService.updateStoreSettings(req.body, origin));
     } catch (e) {
       next(e);
     }

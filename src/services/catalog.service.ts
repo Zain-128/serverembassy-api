@@ -146,7 +146,31 @@ export async function deleteBrand(id: string) {
   if (!result) throw new AppError(404, "Brand not found");
 }
 
-export async function getStoreSettings() {
+export async function getStoreSettings(origin?: string) {
+  const isServerEmbassy =
+    origin?.toLowerCase().includes("serverembassy") ||
+    origin?.toLowerCase().includes("server-embassy");
+
+  if (isServerEmbassy) {
+    let seDoc = await StoreSettings.findOne({ key: "serverembassy" });
+    if (!seDoc) {
+      seDoc = await StoreSettings.create({
+        key: "serverembassy",
+        storeName: "Server Embassy",
+        tagline: "Trusted Enterprise IT Hardware & Global Solutions",
+        phone: "+1 (727) 214-2001",
+        supportEmail: "support@serverembassy.com",
+        address: "7901 4th St. N Ste 300, St. Petersburg, FL 33702",
+        hours: "Mon – Fri: 08:00 AM – 05:00 PM (GMT-4)",
+        freeShippingThreshold: 199,
+        freeShippingLabel: "Free ground shipping on orders over $199",
+        taxRate: 0.07,
+        currency: "USD",
+      });
+    }
+    return mapDoc(seDoc);
+  }
+
   let doc = await StoreSettings.findOne({ key: "default" });
   if (!doc) {
     doc = await StoreSettings.create({
@@ -157,20 +181,19 @@ export async function getStoreSettings() {
       address: "1317 Edgewater Dr Suite #6089, Orlando, FL 32804",
       hours: "Mon – Fri: 09:00 AM – 06:00 PM EST",
     });
-  } else if (doc.storeName === "Server Embassy" || !doc.storeName) {
-    doc.storeName = "Power Line Devices";
-    doc.phone = "(321) 788-5899";
-    doc.supportEmail = "info@powerlinedevices.com";
-    doc.address = "1317 Edgewater Dr Suite #6089, Orlando, FL 32804";
-    doc.hours = "Mon – Fri: 09:00 AM – 06:00 PM EST";
-    await doc.save();
   }
   return mapDoc(doc);
 }
 
-export async function updateStoreSettings(data: Record<string, unknown>) {
+export async function updateStoreSettings(data: Record<string, unknown>, origin?: string) {
+  const key =
+    origin?.toLowerCase().includes("serverembassy") ||
+    origin?.toLowerCase().includes("server-embassy")
+      ? "serverembassy"
+      : "default";
+
   const doc = await StoreSettings.findOneAndUpdate(
-    { key: "default" },
+    { key },
     { $set: data },
     { new: true, upsert: true },
   );
