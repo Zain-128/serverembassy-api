@@ -46,6 +46,7 @@ router.post(
         "card",
         "paypal",
         "wire",
+        "ach",
         "purchase_order",
         "net_terms",
       ]),

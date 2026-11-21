@@ -54,7 +54,7 @@ export type CheckoutInput = {
   email?: string;
   customerEmail?: string;
   customerId?: string;
-  paymentMethod: "stripe" | "cod" | "card" | "paypal" | "wire" | "purchase_order" | "net_terms";
+  paymentMethod: "stripe" | "cod" | "card" | "paypal" | "wire" | "ach" | "purchase_order" | "net_terms";
   paymentIntentId?: string;
   shippingMethodCode?: string;
   couponCode?: string;

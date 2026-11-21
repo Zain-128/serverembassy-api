@@ -212,7 +212,7 @@ const orderSchema = new Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["stripe", "cod", "card", "paypal", "wire", "purchase_order", "net_terms"],
+      enum: ["stripe", "cod", "card", "paypal", "wire", "ach", "purchase_order", "net_terms"],
     },
     paymentIntentId: { type: String, default: "" },
     subtotal: { type: Number, default: 0 },

@@ -75,14 +75,86 @@ export async function getCategoryBySlug(slug: string) {
   return mapDoc(doc);
 }
 
+/** Every category (unpaginated) — the admin needs the full set to render the tree. */
+export async function listAllCategories() {
+  const docs = await Category.find().sort({ sortOrder: 1, name: 1 });
+  return docs.map((d) => mapDoc(d));
+}
+
+function normalizeParentId(value: unknown): string | null {
+  if (value === undefined || value === null || value === "") return null;
+  return String(value);
+}
+
+/**
+ * Ensures `parentId` exists and — when re-parenting an existing category —
+ * isn't the category itself or one of its descendants (which would create a cycle).
+ */
+async function assertValidParent(parentId: string | null, selfId?: string) {
+  if (!parentId) return;
+  if (!isValidObjectId(parentId)) throw new AppError(400, "Parent category not found");
+  if (selfId && parentId === selfId) throw new AppError(400, "A category cannot be its own parent");
+
+  let cursor: string | null = parentId;
+  const seen = new Set<string>();
+  while (cursor) {
+    if (seen.has(cursor)) break; // pre-existing bad data; stop walking
+    seen.add(cursor);
+    const node: { parentId?: unknown } | null = await Category.findById(cursor).select("parentId").lean();
+    if (!node) {
+      if (cursor === parentId) throw new AppError(400, "Parent category not found");
+      break;
+    }
+    if (selfId && cursor === selfId) {
+      throw new AppError(400, "Cannot move a category inside one of its own subcategories");
+    }
+    cursor = normalizeParentId(node.parentId);
+  }
+}
+
+/** Same-named subcategories under different parents need distinct slugs. */
+async function uniqueCategorySlug(base: string, parentId: string | null, excludeId?: string) {
+  const taken = async (slug: string) =>
+    !!(await Category.exists(excludeId ? { slug, _id: { $ne: excludeId } } : { slug }));
+  if (!(await taken(base))) return base;
+  if (parentId) {
+    const parent: { slug?: string } | null = await Category.findById(parentId).select("slug").lean();
+    if (parent?.slug) {
+      const prefixed = `${parent.slug}-${base}`;
+      if (!(await taken(prefixed))) return prefixed;
+      base = prefixed;
+    }
+  }
+  for (let n = 2; n < 1000; n++) {
+    const candidate = `${base}-${n}`;
+    if (!(await taken(candidate))) return candidate;
+  }
+  throw new AppError(409, "Could not generate a unique category slug");
+}
+
 export async function createCategory(data: Record<string, unknown>) {
-  const doc = await Category.create(data);
+  const parentId = normalizeParentId(data.parentId);
+  await assertValidParent(parentId);
+  const slug = await uniqueCategorySlug(String(data.slug), parentId);
+  const doc = await Category.create({ ...data, parentId, slug });
   return mapDoc(doc);
 }
 
 export async function updateCategory(id: string, data: Record<string, unknown>) {
   if (!isValidObjectId(id)) throw new AppError(404, "Category not found");
-  const doc = await Category.findByIdAndUpdate(id, data, { new: true });
+  const update = { ...data };
+  if ("parentId" in update) {
+    update.parentId = normalizeParentId(update.parentId);
+    await assertValidParent(update.parentId as string | null, id);
+  }
+  if (typeof update.slug === "string") {
+    const parentId =
+      "parentId" in update
+        ? (update.parentId as string | null)
+        : normalizeParentId((await Category.findById(id).select("parentId").lean())?.parentId);
+    update.slug = await uniqueCategorySlug(update.slug, parentId, id);
+  }
+  const doc = await Category.findByIdAndUpdate(id, update, { new: true });
   if (!doc) throw new AppError(404, "Category not found");
   return mapDoc(doc);
 }
@@ -92,6 +164,10 @@ export async function deleteCategory(id: string) {
   const { Product } = await import("../models/index.js");
   const count = await Product.countDocuments({ categoryId: id });
   if (count > 0) throw new AppError(400, "Category has products. Move or delete them first.");
+  const children = await Category.countDocuments({ parentId: id });
+  if (children > 0) {
+    throw new AppError(400, "Category has subcategories. Move or delete them first.");
+  }
   const result = await Category.findByIdAndDelete(id);
   if (!result) throw new AppError(404, "Category not found");
 }

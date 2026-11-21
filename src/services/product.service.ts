@@ -295,6 +295,20 @@ async function ensureCategoryByPath(
       parentId = cache.get(walk)!;
       continue;
     }
+    // Reuse an existing category with the same name under the same parent so
+    // repeated imports don't create duplicate branches.
+    const nameRx = new RegExp(`^${segment.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i");
+    const existing: { _id: Types.ObjectId } | null = await Category.findOne({
+      name: nameRx,
+      parentId,
+    })
+      .select("_id")
+      .lean();
+    if (existing) {
+      cache.set(walk, existing._id);
+      parentId = existing._id;
+      continue;
+    }
     const slug = await uniqueSlug(slugify(segment), Category);
     const category: { _id: Types.ObjectId } = await Category.create({
       name: segment,

@@ -264,6 +264,14 @@ router.get(
   },
 );
 
+router.get("/categories/all", async (_req, res, next) => {
+  try {
+    res.json(await catalogService.listAllCategories());
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.post(
   "/categories",
   requireStaff(["super_admin", "admin", "catalog"]),
