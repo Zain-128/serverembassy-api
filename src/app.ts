@@ -10,6 +10,7 @@ import authRoutes from "./routes/auth.routes.js";
 import storeRoutes from "./routes/store.routes.js";
 import checkoutRoutes from "./routes/checkout.routes.js";
 import adminRoutes from "./routes/admin.routes.js";
+import aiAgentRoutes from "./routes/ai-agent.routes.js";
 
 export function createApp() {
   const app = express();
@@ -89,6 +90,7 @@ export function createApp() {
   app.use("/api", checkoutRoutes);
   app.use("/api/checkout", checkoutRoutes);
   app.use("/api/admin", adminRoutes);
+  app.use("/api", aiAgentRoutes);
 
   app.use(notFound);
   app.use(errorHandler);
