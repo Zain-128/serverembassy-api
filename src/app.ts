@@ -33,11 +33,7 @@ export function createApp() {
           ...env.corsOrigins.map((o) => o.replace(/\/$/, "").toLowerCase()),
         ]);
 
-        if (
-          trustedOrigins.has(cleanOrigin) ||
-          (cleanOrigin.endsWith(".vercel.app") &&
-            (cleanOrigin.includes("server-embassy") || cleanOrigin.includes("powerline")))
-        ) {
+        if (trustedOrigins.has(cleanOrigin)) {
           return callback(null, true);
         }
 

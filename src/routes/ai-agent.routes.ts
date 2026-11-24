@@ -3,28 +3,51 @@ import { Product, Order } from "../models/index.js";
 
 const router = Router();
 
+function escapeRegex(str: string): string {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function checkAgentAuth(req: Request): boolean {
-  const expectedKey = process.env.AGENT_STUDIO_API_KEY || "agent-concierge-key-2026";
+  const expectedKey = process.env.AGENT_STUDIO_API_KEY;
+  if (!expectedKey || expectedKey.trim().length < 16) {
+    return false;
+  }
   const apiKey = req.headers["x-api-key"] as string | undefined;
   const authHeader = req.headers["authorization"] as string | undefined;
 
-  if (apiKey && (apiKey === expectedKey || apiKey === "agent-concierge-key-2026")) {
+  if (apiKey && apiKey === expectedKey) {
     return true;
   }
   if (authHeader && authHeader.startsWith("Bearer ")) {
     const token = authHeader.slice(7).trim();
-    if (token === expectedKey || token === "agent-concierge-key-2026") {
+    if (token === expectedKey) {
       return true;
     }
   }
   return false;
 }
 
-// Ensure CORS headers for agent domains
-router.use((_req: Request, res: Response, next: NextFunction) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
-  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
+// Scoped CORS: restrict to official domains and configured AI Studio origin
+router.use((req: Request, res: Response, next: NextFunction) => {
+  const origin = req.headers.origin;
+  if (origin) {
+    const cleanOrigin = origin.replace(/\/$/, "").toLowerCase();
+    const allowed = new Set(
+      [
+        "https://powerlinedevices.com",
+        "https://www.powerlinedevices.com",
+        "https://serverembassy.com",
+        "https://www.serverembassy.com",
+        process.env.AI_STUDIO_ORIGIN?.replace(/\/$/, "").toLowerCase(),
+      ].filter(Boolean)
+    );
+
+    if (allowed.has(cleanOrigin)) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, x-api-key");
+    }
+  }
   next();
 });
 
@@ -33,155 +56,65 @@ router.options(["/products/lookup", "/orders/track", "/agent/product", "/agent/o
 });
 
 /**
- * Endpoint: GET /api/agent/product
+ * Endpoint 1: GET /api/agent/product
  * Query: ?query=<name_or_sku>
  */
 router.get("/agent/product", async (req: Request, res: Response) => {
-  const query = (req.query.query as string | undefined)?.trim();
-  if (!query) {
+  if (!checkAgentAuth(req)) {
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized: Invalid or missing API key. Provide 'x-api-key' or 'Authorization: Bearer <token>' header.",
+    });
+  }
+
+  const rawQuery = (req.query.query as string | undefined)?.trim();
+  if (!rawQuery) {
     return res.status(404).json({ success: false, message: "Not found" });
   }
 
-  try {
-    let productDoc: any = null;
+  // Sanitize input to max 80 chars and escape regex characters to prevent ReDoS
+  const cleanQuery = rawQuery.slice(0, 80);
+  const safeRegex = escapeRegex(cleanQuery);
 
-    // Check database
-    try {
-      productDoc = await Product.findOne({
-        $or: [
-          { sku: { $regex: new RegExp(`^${query}$`, "i") } },
-          { sku: { $regex: query, $options: "i" } },
-          { title: { $regex: query, $options: "i" } },
-          { slug: { $regex: query, $options: "i" } },
-        ],
-      });
-    } catch {
-      // DB offline / fallback
-    }
+  try {
+    const productDoc: any = await Product.findOne({
+      $or: [
+        { sku: cleanQuery },
+        { sku: { $regex: safeRegex, $options: "i" } },
+        { title: { $regex: safeRegex, $options: "i" } },
+        { slug: cleanQuery.toLowerCase() },
+      ],
+    });
 
     if (productDoc) {
       const priceNum = Number(productDoc.salePrice || productDoc.price || 0);
-      const units = Number(productDoc.stockQty ?? 12);
-      const specs = `${productDoc.condition || "Enterprise"} Server Grade | ${productDoc.brandName || "Dual Xeon Scalable"} | 3-Year Warranty`;
+      const units = Number(productDoc.stockQty ?? productDoc.stock ?? 0);
+      const specs = `${productDoc.condition || "Enterprise Grade"} | ${productDoc.brandName || "Enterprise Hardware"} | 30-Day Warranty`;
 
       return res.status(200).json({
         success: true,
         found: true,
         data: {
-          sku: productDoc.sku || "ITEM-101",
+          sku: productDoc.sku,
           name: productDoc.title,
-          price: `$${priceNum.toLocaleString("en-US")}`,
+          price: `$${priceNum.toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
           inStock: units > 0,
           unitsAvailable: units,
           specs,
-          dispatchTime: "Same-day dispatch",
-        },
-      });
-    }
-
-    // Standardized fallback lookup for common catalog SKUs / test queries
-    const qLower = query.toLowerCase().replace(/[^a-z0-9]/g, "");
-    if (qLower === "item101" || qLower === "producttitle" || qLower.includes("r750") || qLower.includes("poweredge")) {
-      return res.status(200).json({
-        success: true,
-        found: true,
-        data: {
-          sku: "ITEM-101",
-          name: "Dell PowerEdge R750 2U Enterprise Server",
-          price: "$4,250",
-          inStock: true,
-          unitsAvailable: 12,
-          specs: "2U Rackmount Dual 3rd Gen Intel Xeon Scalable DDR4 ECC",
-          dispatchTime: "Same-day dispatch",
+          dispatchTime: units > 0 ? "Same-day dispatch if ordered before 3 PM EST" : "Contact sales for lead time",
         },
       });
     }
 
     return res.status(404).json({ success: false, message: "Not found" });
   } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 
 /**
- * Endpoint: GET /api/agent/order
- * Query: ?orderId=<order_id>
- */
-router.get("/agent/order", async (req: Request, res: Response) => {
-  const orderId = (req.query.orderId as string | undefined)?.trim();
-  if (!orderId) {
-    return res.status(404).json({ success: false, message: "Not found" });
-  }
-
-  try {
-    const cleanNum = orderId.replace(/^#/, "");
-    let orderDoc: any = null;
-
-    try {
-      orderDoc = await Order.findOne({
-        $or: [
-          { orderNumber: cleanNum },
-          { orderNumber: `#${cleanNum}` },
-          { orderNumber: { $regex: new RegExp(`^${cleanNum}$`, "i") } },
-        ],
-      });
-    } catch {
-      // DB offline / fallback
-    }
-
-    if (orderDoc) {
-      const rawStatus = (orderDoc.status || "shipped").toLowerCase();
-      let status = "In Transit";
-      if (rawStatus === "delivered") status = "Delivered";
-      else if (rawStatus === "shipped") status = "Shipped";
-      else if (rawStatus === "processing") status = "Processing";
-      else if (rawStatus === "confirmed") status = "Confirmed";
-
-      const shipment = orderDoc.shipments?.[0];
-      const carrier = shipment?.carrier || "FedEx";
-      const trackingNumber = shipment?.trackingNumber || `FX-${orderDoc.orderNumber.replace(/[^0-9]/g, "").padStart(6, "1")}`;
-      const currentLocation = shipment?.currentLocation || "Distribution Hub";
-      const estimatedDelivery = shipment?.estimatedDelivery || "Tomorrow by 2:00 PM";
-
-      return res.status(200).json({
-        success: true,
-        found: true,
-        data: {
-          orderId: orderDoc.orderNumber,
-          status,
-          carrier,
-          trackingNumber,
-          currentLocation,
-          estimatedDelivery,
-        },
-      });
-    }
-
-    // Standardized fallback lookup for common test orders
-    const ordLower = cleanNum.toLowerCase();
-    if (ordLower.includes("ord-9821") || ordLower.includes("9821") || ordLower.includes("2026-9042")) {
-      return res.status(200).json({
-        success: true,
-        found: true,
-        data: {
-          orderId: orderId,
-          status: "In Transit",
-          carrier: "FedEx",
-          trackingNumber: "FX-123456",
-          currentLocation: "Distribution Hub",
-          estimatedDelivery: "Tomorrow by 2:00 PM",
-        },
-      });
-    }
-
-    return res.status(404).json({ success: false, message: "Not found" });
-  } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
-  }
-});
-
-/**
- * Endpoint 1: GET /api/products/lookup
+ * Endpoint 2: GET /api/products/lookup
+ * Query: ?sku=<sku> or ?query=<query>
  */
 router.get("/products/lookup", async (req: Request, res: Response) => {
   if (!checkAgentAuth(req)) {
@@ -191,8 +124,8 @@ router.get("/products/lookup", async (req: Request, res: Response) => {
     });
   }
 
-  const sku = req.query.sku as string | undefined;
-  const query = req.query.query as string | undefined;
+  const sku = (req.query.sku as string | undefined)?.trim();
+  const query = (req.query.query as string | undefined)?.trim();
 
   if (!sku && !query) {
     return res.status(400).json({
@@ -206,35 +139,37 @@ router.get("/products/lookup", async (req: Request, res: Response) => {
     let productDoc: any = null;
 
     if (sku) {
+      const cleanSku = sku.slice(0, 80);
       productDoc = await Product.findOne({
-        sku: { $regex: new RegExp(`^${sku.trim()}$`, "i") },
+        $or: [{ sku: cleanSku }, { sku: { $regex: `^${escapeRegex(cleanSku)}$`, $options: "i" } }],
       });
     }
 
-    if (!productDoc && (query || sku)) {
-      const q = (query || sku || "").trim();
+    if (!productDoc && query) {
+      const cleanQuery = query.slice(0, 80);
+      const safeRegex = escapeRegex(cleanQuery);
       productDoc = await Product.findOne({
         $or: [
-          { sku: { $regex: q, $options: "i" } },
-          { title: { $regex: q, $options: "i" } },
-          { slug: { $regex: q, $options: "i" } },
+          { sku: { $regex: safeRegex, $options: "i" } },
+          { title: { $regex: safeRegex, $options: "i" } },
+          { slug: cleanQuery.toLowerCase() },
         ],
       });
     }
 
     if (productDoc) {
       const p = productDoc;
-      const isAvailable = (p.stockQty ?? 1) > 0;
-      const unitsAvailable = p.stockQty ?? 15;
-      const status = unitsAvailable > 5 ? "in_stock" : unitsAvailable > 0 ? "low_stock" : "out_of_stock";
+      const units = Number(p.stockQty ?? p.stock ?? 0);
+      const isAvailable = units > 0;
+      const status = units > 5 ? "in_stock" : units > 0 ? "low_stock" : "out_of_stock";
 
       return res.status(200).json({
         success: true,
         found: true,
         product: {
-          sku: p.sku || `SKU-SE-${String(p._id).slice(-6).toUpperCase()}`,
+          sku: p.sku,
           name: p.title,
-          category: p.primaryCategorySlug ? p.primaryCategorySlug.replace(/-/g, " ").replace(/\b\w/g, (c: string) => c.toUpperCase()) : "Enterprise Hardware",
+          category: p.primaryCategorySlug ? p.primaryCategorySlug.replace(/-/g, " ") : "Enterprise Hardware",
           price: {
             currency: "USD",
             amount: Number(p.salePrice || p.price || 0),
@@ -242,36 +177,129 @@ router.get("/products/lookup", async (req: Request, res: Response) => {
           },
           stock: {
             isAvailable,
-            unitsAvailable,
+            unitsAvailable: units,
             status,
-            warehouseLocation: "Central Warehouse (Dock B)",
+            warehouseLocation: "Orlando, FL Fulfillment Center",
           },
           specifications: {
-            formFactor: p.condition ? `${p.condition} Server Architecture` : "Enterprise Hardware",
-            cpuSupport: p.brandName || "Intel / AMD Dual Scalable Compatible",
-            memoryType: "Enterprise DDR4/DDR5 ECC Registered",
-            warranty: "3-Year Hardware Replacement Included",
+            condition: p.condition || "Certified Refurbished",
+            brand: p.brandName || "OEM",
+            warranty: "30-Day Hardware Replacement Included",
           },
-          leadTime: "Same-day dispatch if ordered by 3:00 PM EST",
+          leadTime: isAvailable ? "Same-day dispatch if ordered before 3 PM EST" : "Backorder / Contact sales",
         },
       });
     }
 
-    // Suggestions fallback
-    const suggestions = ["SKU-SRV-R750", "SKU-SRV-R650", "SKU-SRV-R740XD"];
     return res.status(404).json({
       success: false,
       found: false,
       message: "Product with specified SKU or name not found in catalog.",
-      suggestions,
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 
 /**
- * Endpoint 2: GET /api/orders/track
+ * Endpoint 3: GET /api/agent/order
+ * Query: ?orderId=<order_id>&emailOrPhone=<email_or_phone>
+ * 
+ * Strict Security:
+ * - Requires AGENT_STUDIO_API_KEY
+ * - Requires email or phone verification
+ * - Uses exact string lookup (no regex injection)
+ * - Returns ONLY status & real tracking; NEVER customer name, company, items, or totals
+ * - Never invents tracking details
+ */
+router.get("/agent/order", async (req: Request, res: Response) => {
+  if (!checkAgentAuth(req)) {
+    return res.status(401).json({
+      success: false,
+      message: "Unauthorized: Invalid or missing API key. Provide 'x-api-key' or 'Authorization: Bearer <token>' header.",
+    });
+  }
+
+  const rawOrderId = (req.query.orderId as string | undefined)?.trim();
+  const rawVerify = ((req.query.emailOrPhone || req.query.email || req.query.phone) as string | undefined)?.trim().toLowerCase();
+
+  if (!rawOrderId) {
+    return res.status(400).json({ success: false, message: "Order ID parameter is required." });
+  }
+
+  // Require verification to prevent order enumeration
+  if (!rawVerify || rawVerify.length < 4) {
+    return res.status(400).json({
+      success: false,
+      message: "Customer email or phone verification is required to look up order status.",
+    });
+  }
+
+  const cleanOrderId = rawOrderId.replace(/^#/, "");
+  if (!/^[A-Za-z0-9\-_]+$/.test(cleanOrderId)) {
+    return res.status(400).json({ success: false, message: "Invalid order ID format." });
+  }
+
+  try {
+    // Exact match only: never regex
+    const orderDoc: any = await Order.findOne({
+      $or: [{ orderNumber: cleanOrderId }, { orderNumber: `#${cleanOrderId}` }],
+    });
+
+    if (!orderDoc) {
+      return res.status(404).json({ success: false, message: "Not found" });
+    }
+
+    // Verify email or phone against database record
+    const orderEmail = (orderDoc.email || "").toLowerCase().trim();
+    const rawPhone = (orderDoc.shippingAddress?.phone || orderDoc.customerPhone || "").replace(/[^0-9]/g, "");
+    const testDigits = rawVerify.replace(/[^0-9]/g, "");
+
+    const emailMatches = orderEmail && rawVerify === orderEmail;
+    const phoneMatches = testDigits.length >= 7 && rawPhone.endsWith(testDigits);
+
+    if (!emailMatches && !phoneMatches) {
+      return res.status(404).json({ success: false, message: "Not found" });
+    }
+
+    // Real shipment details only: never invent
+    const shipment = orderDoc.shipments?.[0];
+    const hasShipment = Boolean(shipment && shipment.trackingNumber);
+
+    const rawStatus = (orderDoc.status || "processing").toLowerCase();
+    let status = "Processing";
+    if (rawStatus === "delivered") status = "Delivered";
+    else if (rawStatus === "shipped") status = "Shipped";
+    else if (rawStatus === "confirmed") status = "Confirmed";
+    else if (rawStatus === "cancelled") status = "Cancelled";
+
+    return res.status(200).json({
+      success: true,
+      found: true,
+      data: {
+        orderId: orderDoc.orderNumber,
+        status: hasShipment ? "In Transit" : status,
+        carrier: hasShipment ? (shipment.carrier || null) : null,
+        trackingNumber: hasShipment ? (shipment.trackingNumber || null) : null,
+        currentLocation: hasShipment ? (shipment.currentLocation || "In Transit") : "Not shipped yet",
+        estimatedDelivery: hasShipment ? (shipment.estimatedDelivery || null) : null,
+      },
+    });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, message: "Internal server error" });
+  }
+});
+
+/**
+ * Endpoint 4: GET /api/orders/track
+ * Query: ?orderId=<order_id>&emailOrPhone=<email_or_phone>
+ * 
+ * Strict Security:
+ * - Requires AGENT_STUDIO_API_KEY
+ * - Requires email or phone verification
+ * - Exact string match only (no regex)
+ * - Returns ONLY status & real tracking; NEVER customer name, company, items, or totals
+ * - Never invents tracking details
  */
 router.get("/orders/track", async (req: Request, res: Response) => {
   if (!checkAgentAuth(req)) {
@@ -281,10 +309,10 @@ router.get("/orders/track", async (req: Request, res: Response) => {
     });
   }
 
-  const orderId = req.query.orderId as string | undefined;
-  const emailOrPhone = (req.query.emailOrPhone as string | undefined)?.toLowerCase().trim();
+  const rawOrderId = (req.query.orderId as string | undefined)?.trim();
+  const rawVerify = ((req.query.emailOrPhone || req.query.email || req.query.phone) as string | undefined)?.trim().toLowerCase();
 
-  if (!orderId) {
+  if (!rawOrderId) {
     return res.status(400).json({
       success: false,
       found: false,
@@ -292,15 +320,29 @@ router.get("/orders/track", async (req: Request, res: Response) => {
     });
   }
 
+  // Require verification to prevent order enumeration
+  if (!rawVerify || rawVerify.length < 4) {
+    return res.status(400).json({
+      success: false,
+      found: false,
+      message: "Customer email or phone verification is required to track orders.",
+    });
+  }
+
+  const cleanOrderId = rawOrderId.replace(/^#/, "");
+  if (!/^[A-Za-z0-9\-_]+$/.test(cleanOrderId)) {
+    return res.status(400).json({
+      success: false,
+      found: false,
+      message: "Invalid order ID format.",
+    });
+  }
+
   try {
-    const cleanNum = orderId.trim().replace(/^#/, "");
-    const orderDoc = await Order.findOne({
-      $or: [
-        { orderNumber: cleanNum },
-        { orderNumber: `#${cleanNum}` },
-        { orderNumber: { $regex: new RegExp(`^${cleanNum}$`, "i") } },
-      ],
-    }).populate("customerId");
+    // Exact match only: never regex
+    const orderDoc: any = await Order.findOne({
+      $or: [{ orderNumber: cleanOrderId }, { orderNumber: `#${cleanOrderId}` }],
+    });
 
     if (!orderDoc) {
       return res.status(404).json({
@@ -310,71 +352,44 @@ router.get("/orders/track", async (req: Request, res: Response) => {
       });
     }
 
-    const order = orderDoc as any;
+    // Verify email or phone against database record
+    const orderEmail = (orderDoc.email || "").toLowerCase().trim();
+    const rawPhone = (orderDoc.shippingAddress?.phone || orderDoc.customerPhone || "").replace(/[^0-9]/g, "");
+    const testDigits = rawVerify.replace(/[^0-9]/g, "");
 
-    // Security check if emailOrPhone provided
-    if (emailOrPhone) {
-      const orderEmail = (order.email || "").toLowerCase();
-      const orderPhone = (order.shippingAddress?.phone || "").replace(/[^0-9]/g, "");
-      const testNormalized = emailOrPhone.replace(/[^0-9]/g, "");
+    const emailMatches = orderEmail && rawVerify === orderEmail;
+    const phoneMatches = testDigits.length >= 7 && rawPhone.endsWith(testDigits);
 
-      const emailMatches = orderEmail && orderEmail.includes(emailOrPhone);
-      const phoneMatches = testNormalized.length >= 7 && orderPhone && orderPhone.includes(testNormalized);
-
-      if (!emailMatches && !phoneMatches) {
-        return res.status(404).json({
-          success: false,
-          found: false,
-          message: "Verification failed. The provided email or phone does not match order records.",
-        });
-      }
+    if (!emailMatches && !phoneMatches) {
+      return res.status(404).json({
+        success: false,
+        found: false,
+        message: "Order not found. Please verify the order number and email/phone.",
+      });
     }
 
-    // Shipping info from shipment or carrier defaults
-    const shipment = order.shipments?.[0];
-    const carrier = shipment?.carrier || "FedEx Express Freight";
-    const trackingNumber = shipment?.trackingNumber || `FX-${order.orderNumber.replace(/[^0-9]/g, "").padStart(12, "7")}`;
-    const trackingUrl = `https://fedex.com/track/${trackingNumber}`;
-    const destinationCity = order.shippingAddress?.city
-      ? `${order.shippingAddress.city}, ${order.shippingAddress.state || ""}`.trim()
-      : "San Francisco, CA";
-
-    const items = (order.items || []).map((it: any) => ({
-      sku: it.sku || "SKU-PART",
-      name: it.title,
-      quantity: it.qty,
-      totalPrice: `$${Number(it.lineTotal || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
-    }));
+    // Real shipment details only: never invent
+    const shipment = orderDoc.shipments?.[0];
+    const hasShipment = Boolean(shipment && shipment.trackingNumber);
 
     return res.status(200).json({
       success: true,
       found: true,
       order: {
-        orderId: order.orderNumber,
-        status: order.status,
-        orderDate: order.placedAt?.toISOString() || order.createdAt?.toISOString(),
-        customer: {
-          name: order.shippingAddress?.name || order.shippingAddress?.firstName || "Customer",
-          company: order.shippingAddress?.company || order.customerId?.company || "Commercial Account",
-        },
-        items,
+        orderId: orderDoc.orderNumber,
+        status: orderDoc.status || "processing",
         shipping: {
-          carrier,
-          trackingNumber,
-          trackingUrl,
-          currentLocation: shipment ? "In Transit - Distribution Hub" : "Fulfillment Center Processing",
-          estimatedDelivery: "2-3 Business Days",
-          destinationCity,
-        },
-        billing: {
-          totalAmount: `$${Number(order.total || 0).toLocaleString("en-US", { minimumFractionDigits: 2 })}`,
-          paymentMethod: order.paymentMethod || "Corporate Invoice (Net-30)",
-          paymentStatus: order.paymentStatus || "verified",
+          status: hasShipment ? "Shipped" : "Not shipped yet",
+          carrier: hasShipment ? (shipment.carrier || null) : null,
+          trackingNumber: hasShipment ? (shipment.trackingNumber || null) : null,
+          trackingUrl: hasShipment ? (shipment.trackingUrl || null) : null,
+          currentLocation: hasShipment ? (shipment.currentLocation || "In Transit") : "Not shipped yet",
+          estimatedDelivery: hasShipment ? (shipment.estimatedDelivery || null) : null,
         },
       },
     });
   } catch (err: any) {
-    return res.status(500).json({ success: false, message: err.message });
+    return res.status(500).json({ success: false, message: "Internal server error" });
   }
 });
 
