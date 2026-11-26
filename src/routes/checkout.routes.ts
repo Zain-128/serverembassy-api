@@ -16,17 +16,30 @@ router.post(
       amount: z.number().positive("Amount must be greater than 0"),
       currency: z.string().default("usd"),
       metadata: z.record(z.string()).optional(),
+      store: z.string().optional(),
     }),
   ),
   async (req, res, next) => {
     try {
       const { amount, currency, metadata } = req.body;
       const amountInCents = Math.round(amount * 100);
-      const store = (req.headers["x-store-origin"] as string) || metadata?.store || "powerline";
-      const result = await stripeService.createPaymentIntent(amountInCents, currency, {
-        store,
-        ...metadata,
-      });
+      const rawStore =
+        req.body.store ||
+        (req.headers["x-store-origin"] as string) ||
+        (req.headers["x-store-type"] as string) ||
+        metadata?.store ||
+        (req.headers.origin as string) ||
+        "powerline";
+      const storeId = stripeService.resolveStore(rawStore, req.headers.origin as string);
+      const result = await stripeService.createPaymentIntent(
+        amountInCents,
+        currency,
+        {
+          store: storeId,
+          ...metadata,
+        },
+        storeId,
+      );
       res.json(result);
     } catch (e) {
       next(e);
@@ -214,13 +227,60 @@ router.get(["/orders/verify-signed", "/orders/:orderNumber/receipt"], async (req
 
 router.post("/stripe/webhook", express.raw({ type: "application/json" }), async (req, res) => {
   const sig = req.headers["stripe-signature"];
-  const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!sig || !webhookSecret) {
-    return res.status(400).json({ error: "Missing stripe-signature or STRIPE_WEBHOOK_SECRET" });
+  if (!sig) {
+    return res.status(400).json({ error: "Missing stripe-signature header" });
   }
+
+  const rawPayload = (req as any).rawBody || req.body;
+  const storeQuery = (req.query.store as string) || (req.headers["x-store-origin"] as string);
+  const targetStore = storeQuery ? stripeService.resolveStore(storeQuery) : "powerline";
+
+  const powerlineConfig = stripeService.getStripeConfig("powerline");
+  const serverembassyConfig = stripeService.getStripeConfig("serverembassy");
+  const luckygirlConfig = stripeService.getStripeConfig("luckygirl");
+
+  const candidates: Array<{ store: stripeService.StoreId; secret: string }> = [];
+  if (targetStore === "powerline" && powerlineConfig.webhookSecret) {
+    candidates.push({ store: "powerline", secret: powerlineConfig.webhookSecret });
+  } else if (targetStore === "serverembassy" && serverembassyConfig.webhookSecret) {
+    candidates.push({ store: "serverembassy", secret: serverembassyConfig.webhookSecret });
+  } else if (targetStore === "luckygirl" && luckygirlConfig.webhookSecret) {
+    candidates.push({ store: "luckygirl", secret: luckygirlConfig.webhookSecret });
+  }
+
+  if (powerlineConfig.webhookSecret && !candidates.some((c) => c.secret === powerlineConfig.webhookSecret)) {
+    candidates.push({ store: "powerline", secret: powerlineConfig.webhookSecret });
+  }
+  if (serverembassyConfig.webhookSecret && !candidates.some((c) => c.secret === serverembassyConfig.webhookSecret)) {
+    candidates.push({ store: "serverembassy", secret: serverembassyConfig.webhookSecret });
+  }
+  if (luckygirlConfig.webhookSecret && !candidates.some((c) => c.secret === luckygirlConfig.webhookSecret)) {
+    candidates.push({ store: "luckygirl", secret: luckygirlConfig.webhookSecret });
+  }
+
+  if (candidates.length === 0) {
+    return res.status(400).json({ error: "Missing STRIPE_WEBHOOK_SECRET in environment" });
+  }
+
+  let event: any = null;
+  let matchedStore: stripeService.StoreId = "powerline";
+  let lastError: any = null;
+
+  for (const candidate of candidates) {
+    try {
+      event = stripeService.constructWebhookEvent(rawPayload, sig as string, candidate.secret, candidate.store);
+      matchedStore = candidate.store;
+      break;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  if (!event) {
+    return res.status(400).json({ error: `Webhook signature verification failed: ${lastError?.message || "Invalid signature"}` });
+  }
+
   try {
-    const rawPayload = (req as any).rawBody || req.body;
-    const event = stripeService.constructWebhookEvent(rawPayload, sig as string, webhookSecret);
     if (event.type === "payment_intent.succeeded") {
       const pi = event.data.object as any;
       await Order.updateOne({ paymentIntentId: pi.id }, { $set: { paymentStatus: "paid" } });
@@ -228,9 +288,9 @@ router.post("/stripe/webhook", express.raw({ type: "application/json" }), async 
       const pi = event.data.object as any;
       await Order.updateOne({ paymentIntentId: pi.id }, { $set: { paymentStatus: "failed" } });
     }
-    res.json({ received: true });
+    res.json({ received: true, store: matchedStore });
   } catch (err: any) {
-    res.status(400).json({ error: `Webhook signature verification failed: ${err.message}` });
+    res.status(500).json({ error: `Webhook processing failed: ${err.message}` });
   }
 });
 

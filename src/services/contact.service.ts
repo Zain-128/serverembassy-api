@@ -1,6 +1,7 @@
 import { ContactMessage } from "../models/index.js";
 import { AppError, mapDoc } from "../lib/errors.js";
 import { paginate, totalPagesOf, type PaginationQuery } from "../lib/paginate.js";
+import { sendContactAlert } from "./email.service.js";
 
 export type ContactMessageInput = {
   name: string;
@@ -17,6 +18,10 @@ export async function createContactMessage(input: ContactMessageInput) {
     ...input,
     store: storeType,
     type: storeType,
+  });
+  // Asynchronously dispatch admin alert
+  sendContactAlert(doc as any).catch((mailErr) => {
+    console.error("❌ Failed to send contact notification email:", mailErr);
   });
   return mapDoc(doc);
 }

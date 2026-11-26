@@ -14,6 +14,7 @@ import { AppError, mapDoc } from "../lib/errors.js";
 import { paginate, totalPagesOf, type PaginationQuery } from "../lib/paginate.js";
 import * as couponService from "./coupon.service.js";
 import * as stripeService from "./stripe.service.js";
+import { sendOrderAlert, sendQuoteAlert } from "./email.service.js";
 
 const ORDER_NUMBER_BASE = 1000;
 
@@ -315,6 +316,11 @@ export async function createOrder(input: CheckoutInput) {
 
     if (input.couponCode) await couponService.redeemCoupon(input.couponCode);
 
+    // Asynchronously dispatch email notifications (receipt to customer, alert to operations)
+    sendOrderAlert(order as any).catch((mailErr) => {
+      console.error("❌ Failed to send order notification email:", mailErr);
+    });
+
     return mapDoc(order);
   } catch (e) {
     for (const [productId, qty] of Array.from(decremented.entries())) {
@@ -473,6 +479,10 @@ export async function listQuotesPaginated(query: PaginationQuery & { store?: str
 
 export async function createQuote(data: Record<string, unknown>) {
   const doc = await Quote.create(data);
+  // Asynchronously dispatch email alerts (admin notification & customer acknowledgment)
+  sendQuoteAlert(doc as any).catch((mailErr) => {
+    console.error("❌ Failed to send quote notification email:", mailErr);
+  });
   return mapDoc(doc);
 }
 

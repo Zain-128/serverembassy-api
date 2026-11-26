@@ -10,6 +10,16 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
   STRIPE_SECRET_KEY: z.string().optional(),
   STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  POWERLINE_STRIPE_SECRET_KEY: z.string().optional(),
+  POWERLINE_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  POWERLINE_STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  SERVEREMBASSY_STRIPE_SECRET_KEY: z.string().optional(),
+  SERVEREMBASSY_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  SERVEREMBASSY_STRIPE_WEBHOOK_SECRET: z.string().optional(),
+  LUCKYGIRL_STRIPE_SECRET_KEY: z.string().optional(),
+  LUCKYGIRL_STRIPE_PUBLISHABLE_KEY: z.string().optional(),
+  LUCKYGIRL_STRIPE_WEBHOOK_SECRET: z.string().optional(),
 });
 
 const parsed = envSchema.safeParse(process.env);
