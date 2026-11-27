@@ -59,6 +59,21 @@ router.get(
   },
 );
 
+// Must stay above "/products/:slug". Used by the storefront's XML sitemaps.
+const sitemapQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  limit: z.coerce.number().int().min(1).max(5000).optional(),
+});
+
+router.get("/products/sitemap", validateQuery(sitemapQuerySchema), async (req, res, next) => {
+  try {
+    const q = req.query as z.infer<typeof sitemapQuerySchema>;
+    res.json(await productService.listSitemapProducts({ page: q.page, limit: q.limit }));
+  } catch (e) {
+    next(e);
+  }
+});
+
 router.get("/products/by-ids", validateQuery(z.object({ ids: z.string().optional() })), async (req, res, next) => {
   try {
     const ids = String(req.query.ids ?? "")

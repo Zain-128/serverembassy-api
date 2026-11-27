@@ -159,6 +159,41 @@ export async function listProducts(query: ProductListQuery, publicOnly = true) {
   };
 }
 
+/**
+ * Lightweight listing for XML sitemaps: only slug + updatedAt, up to 5,000 per
+ * page, in a stable order (_id) so pages never overlap or skip products.
+ * Same visibility rules as the Power Line storefront listing (published,
+ * excluding Lucky Girl items).
+ */
+export async function listSitemapProducts(query: { page?: number; limit?: number }) {
+  const page = Math.max(1, query.page ?? 1);
+  const limit = Math.min(5000, Math.max(1, query.limit ?? 5000));
+  const filter = {
+    status: "published",
+    store: { $ne: "luckygirl" },
+    type: { $ne: "luckygirl" },
+  };
+  const [docs, total] = await Promise.all([
+    Product.find(filter)
+      .select({ slug: 1, updatedAt: 1, _id: 0 })
+      .sort({ _id: 1 })
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+    Product.countDocuments(filter),
+  ]);
+  return {
+    items: docs.map((d) => ({
+      slug: d.slug as string,
+      updatedAt: d.updatedAt ? new Date(d.updatedAt as Date).toISOString() : null,
+    })),
+    total,
+    page,
+    limit,
+    totalPages: Math.ceil(total / limit),
+  };
+}
+
 export async function getProductBySlug(slug: string, publicOnly = true, store?: string) {
   const filter: Record<string, unknown> = { slug };
   if (publicOnly) filter.status = "published";
